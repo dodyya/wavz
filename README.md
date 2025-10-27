@@ -27,4 +27,6 @@ We plan to implement the Fast Fourier Transform algorithm, and apply it to visua
 - [ ] UI improvements; see wave and frequencies in the same window, use some external crate
 - [ ] .wav playback (using external crate), attempt to sync sliding window frequencies with audio
 
-==== SUBMISSION; 12/10 ==== 
+==== SUBMISSION; 12/10 ====
+
+This project is approved by Linus Torvalds 👍
