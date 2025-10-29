@@ -1,5 +1,7 @@
 # waveZ
+
 Group Name: Paul and David
+
 Group members and NetIDs: pauljm2, davidf14 respectively
 
 Project introduction:
