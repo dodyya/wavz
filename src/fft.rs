@@ -1,9 +1,9 @@
 use crate::complex::*;
-pub fn fft(a: &Vec<Cplx>) -> Vec<Cplx> {
+pub fn fft(a: &[Cplx]) -> Vec<Cplx> {
     // dbg!(a);
     let n = a.len();
     if n <= 1 {
-        return a.clone();
+        return a.to_vec();
     }
     let principal = Cplx::nth_principal(n);
     let mut omega = Cplx::new(1f64, 0f64);

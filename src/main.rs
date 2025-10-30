@@ -11,6 +11,7 @@ fn main() {
     let component = |x: f64, freq: f64| (2.0 * PI * freq / size as f64 * x).cos();
 
     let combination = |x: f64| {
+        // Kinda whatever random periodic function
         5.0 + component(x, 2.0)
             + -1.0 * component(x, 9.0)
             + component(x, 37.0)
@@ -26,6 +27,7 @@ fn main() {
     for (i, f) in frequencies[..size / 2].iter().enumerate() {
         if f.abs() > 0.0001 {
             println!("x_{}={:.2}", i, f.abs() / size as f64);
+            // Extracting coefficients from function above, only given points
         }
     }
 }
