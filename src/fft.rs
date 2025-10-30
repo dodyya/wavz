@@ -1,4 +1,4 @@
-use crate::complex::*;
+use crate::complex::Cplx;
 
 // TODO make fft impl not copy data when recursing; a possible solution is to map indices
 // between iterations instead of copying the data each time.

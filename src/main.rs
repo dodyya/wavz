@@ -1,9 +1,9 @@
-mod complex;
-mod fft;
-
 use std::f64::consts::PI;
 
-use complex::Cplx;
+use wavez::complex::Cplx;
+use wavez::fft::fft;
+
+// use complex::Cplx;
 
 fn main() {
 	let size = 2048;
@@ -24,7 +24,7 @@ fn main() {
 		sine.push(Cplx::new(combination(i as f64), 0f64));
 	}
 
-	let frequencies = fft::fft(&sine);
+	let frequencies = fft(&sine);
 
 	for (i, f) in frequencies[..size / 2].iter().enumerate() {
 		if f.abs() > 0.0001 {
