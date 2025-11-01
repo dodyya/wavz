@@ -204,30 +204,22 @@ pub fn parse(source: impl io::Read + io::Seek) -> io::Result<()> {
 		},
 	};
 
+	let file_len = size_of::<ChunkHeader>() as u32 + u32::from_le_bytes(riff_data.riff_size);
 	let mut chunk_header = ChunkHeader::zeroed();
-	while u32::from_le_bytes(chunk_header.len) < 8 + u32::from_le_bytes(riff_data.riff_size) {
+	let mut cur_pos = 0;
+
+	while cur_pos < file_len {
 		source.read_exact(chunk_header.as_bytes_mut())?;
 
 		chunk_header.remove_later_print(); // TODO remove
 
-		let from_start = source.seek(SeekFrom::Current(
-			u32::from_le_bytes(chunk_header.len) as i64
-		))?;
-	}
-
-	loop {
-		let mut tmp_chunk_header = ChunkHeader::zeroed();
-		source.read_exact(tmp_chunk_header.as_bytes_mut())?;
-
-		tmp_chunk_header.remove_later_print();
-
-		let from_start = source.seek(SeekFrom::Current(
-			u32::from_le_bytes(tmp_chunk_header.len) as i64,
-		))?;
-
-		if from_start >= 8 + u32::from_le_bytes(riff_data.riff_size) as u64 {
-			break;
-		}
+		// TODO: replace try_into().unwrap() with something better
+		cur_pos = source
+			.seek(SeekFrom::Current(
+				u32::from_le_bytes(chunk_header.len) as i64
+			))?
+			.try_into()
+			.unwrap();
 	}
 
 	// TODO: validate `format_data`, error if bad (not WAVE_FORMAT_PCM, that is all i cba to support rn)
