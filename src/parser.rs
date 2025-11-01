@@ -205,7 +205,7 @@ pub fn parse(source: impl io::Read + io::Seek) -> io::Result<()> {
 	};
 
 	let mut chunk_header = ChunkHeader::zeroed();
-	while chunk_header < 8 + u32::from_le_bytes(riff_data.riff_size) as u64 {
+	while u32::from_le_bytes(chunk_header.len) < 8 + u32::from_le_bytes(riff_data.riff_size) {
 		source.read_exact(chunk_header.as_bytes_mut())?;
 
 		chunk_header.remove_later_print(); // TODO remove
