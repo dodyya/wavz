@@ -1,5 +1,4 @@
 edition = "2024"
-fn_single_line = true
 force_multiline_blocks = true
 format_macro_matchers = true
 hard_tabs = true
