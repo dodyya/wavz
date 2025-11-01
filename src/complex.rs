@@ -1,9 +1,9 @@
-use std::f64::consts::PI;
+pub use std::f32::consts::PI;
 use std::fmt::{self, Display};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 // TODO remove + inline once the IR format is decided
-type Float = f64;
+type Float = f32;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Cplx {
@@ -16,28 +16,46 @@ impl Cplx {
 	const ONE: Cplx = Cplx { re: 1.0, im: 0.0 };
 	const ZERO: Cplx = Cplx { re: 0.0, im: 0.0 };
 
-	pub fn new(re: Float, im: Float) -> Self { Cplx { re, im } }
+	pub fn new(re: Float, im: Float) -> Self {
+		Cplx { re, im }
+	}
+
+	pub fn from_i16(re: i16) -> Self {
+		Cplx::new(re as Float, 0.0)
+	}
 
 	pub fn exp(&self) -> Cplx {
 		let r = self.re.exp();
 		Cplx::new(r * self.im.cos(), r * self.im.sin())
 	}
 
-	pub fn mul_i(&self) -> Cplx { Cplx::new(-self.im, self.re) }
+	pub fn mul_i(&self) -> Cplx {
+		Cplx::new(-self.im, self.re)
+	}
 
-	pub fn div_i(&self) -> Cplx { Cplx::new(self.im, -self.re) }
+	pub fn div_i(&self) -> Cplx {
+		Cplx::new(self.im, -self.re)
+	}
 
-	pub fn conj(&self) -> Cplx { Cplx::new(self.re, -self.im) }
+	pub fn conj(&self) -> Cplx {
+		Cplx::new(self.re, -self.im)
+	}
 
-	pub fn nth_principal(n: usize) -> Cplx { Self::exp(&Self::new(0.0, 2.0 * PI / n as Float)) }
+	pub fn nth_principal(n: usize) -> Cplx {
+		Self::exp(&Self::new(0.0, 2.0 * PI / n as Float))
+	}
 
-	pub fn abs(&self) -> Float { (self.re * self.re + self.im * self.im).sqrt() }
+	pub fn abs(&self) -> Float {
+		(self.re * self.re + self.im * self.im).sqrt()
+	}
 }
 
 impl Add for Cplx {
 	type Output = Cplx;
 
-	fn add(self, other: Cplx) -> Cplx { Cplx::new(self.re + other.re, self.im + other.im) }
+	fn add(self, other: Cplx) -> Cplx {
+		Cplx::new(self.re + other.re, self.im + other.im)
+	}
 }
 
 impl AddAssign for Cplx {
@@ -50,7 +68,9 @@ impl AddAssign for Cplx {
 impl Sub for Cplx {
 	type Output = Cplx;
 
-	fn sub(self, other: Cplx) -> Cplx { Cplx::new(self.re - other.re, self.im - other.im) }
+	fn sub(self, other: Cplx) -> Cplx {
+		Cplx::new(self.re - other.re, self.im - other.im)
+	}
 }
 
 impl SubAssign for Cplx {
@@ -111,5 +131,7 @@ impl Display for Cplx {
 impl Neg for Cplx {
 	type Output = Cplx;
 
-	fn neg(self) -> Cplx { Cplx::new(-self.re, -self.im) }
+	fn neg(self) -> Cplx {
+		Cplx::new(-self.re, -self.im)
+	}
 }

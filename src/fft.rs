@@ -13,7 +13,7 @@ pub fn fft(a: &[Cplx]) -> Vec<Cplx> {
 	}
 
 	let principal = Cplx::nth_principal(n);
-	let mut omega = Cplx::new(1f64, 0f64);
+	let mut omega = Cplx::new(1f32, 0f32);
 
 	let a_evens: Vec<Cplx> = a.iter().step_by(2).copied().collect();
 	let a_odds: Vec<Cplx> = a.iter().skip(1).step_by(2).copied().collect();
@@ -21,7 +21,7 @@ pub fn fft(a: &[Cplx]) -> Vec<Cplx> {
 	let y_evens = fft(&a_evens);
 	let y_odds = fft(&a_odds);
 
-	let mut y = vec![Cplx::new(0f64, 0f64); n];
+	let mut y = vec![Cplx::new(0f32, 0f32); n];
 
 	// no idea what this does
 	for k in 0..n / 2 {
