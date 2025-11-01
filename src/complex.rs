@@ -12,9 +12,9 @@ pub struct Cplx {
 }
 
 impl Cplx {
-	const I: Cplx = Cplx { re: 0.0, im: 1.0 };
-	const ONE: Cplx = Cplx { re: 1.0, im: 0.0 };
-	const ZERO: Cplx = Cplx { re: 0.0, im: 0.0 };
+	pub const I: Cplx = Cplx { re: 0.0, im: 1.0 };
+	pub const ONE: Cplx = Cplx { re: 1.0, im: 0.0 };
+	pub const ZERO: Cplx = Cplx { re: 0.0, im: 0.0 };
 
 	pub fn new(re: Float, im: Float) -> Self {
 		Cplx { re, im }

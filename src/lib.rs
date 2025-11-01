@@ -4,11 +4,12 @@ pub mod parser;
 
 #[cfg(test)]
 mod tests {
+	use std::cmp::max;
 	use std::fs::{File, read};
 
 	use crate::{
 		complex::{Cplx, PI},
-		fft::fft,
+		fft::*,
 	};
 
 	use super::parser::{parse, parse1};
@@ -69,5 +70,37 @@ mod tests {
 		assert!((frequencies[9].abs() / size as f32 - 0.50).abs() < 1e-4);
 		assert!((frequencies[17].abs() / size as f32 - 2.50).abs() < 1e-4);
 		assert!((frequencies[37].abs() / size as f32 - 0.50).abs() < 1e-4);
+	}
+	//TODO: Benchamrk: )
+	#[test]
+	fn compare_roots_of_unity_impls() {
+		let n = 1 << 5;
+		let roots1 = roots_of_unity_1(n);
+		let roots2 = roots_of_unity_2(n);
+		let roots3 = roots_of_unity_3(n);
+		let roots4 = roots_of_unity_4(n);
+		let roots5 = roots_of_unity_5(n);
+		let roots6 = roots_of_unity_6(n);
+
+		let roots = [roots1, roots2, roots3, roots4, roots5, roots6];
+
+		let mut tolerance = [[0.0; 6]; 6];
+
+		for i in 0..6 {
+			for j in 0..6 {
+				for k in 0..n / 2 {
+					let diff = (roots[i][k] - roots[j][k]).abs();
+					if diff > tolerance[i][j] {
+						tolerance[i][j] = diff;
+					}
+				}
+			}
+		}
+		for i in 0..6 {
+			for j in 0..6 {
+				print!("{:.4} ", tolerance[i][j]);
+			}
+			println!();
+		}
 	}
 }
