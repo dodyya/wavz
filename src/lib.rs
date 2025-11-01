@@ -74,7 +74,7 @@ mod tests {
 	//TODO: Benchamrk: )
 	#[test]
 	fn compare_roots_of_unity_impls() {
-		let n = 1 << 5;
+		let n = 1 << 30; //Run with --release lmao
 		let roots1 = roots_of_unity_1(n);
 		let roots2 = roots_of_unity_2(n);
 		let roots3 = roots_of_unity_3(n);
@@ -101,6 +101,16 @@ mod tests {
 				print!("{:.4} ", tolerance[i][j]);
 			}
 			println!();
+		}
+	}
+
+	#[test]
+	fn test_abuse_of_symmetry() {
+		let n = 1 << 10;
+		let roots_raw = roots_of_unity_6(n);
+		let roots_cooked = symmetry_abuse_roots_of_unity(n);
+		for i in 0..n {
+			assert!((roots_raw[i] - roots_cooked[i]).abs() < 1e-4);
 		}
 	}
 }

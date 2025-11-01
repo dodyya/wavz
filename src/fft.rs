@@ -146,6 +146,34 @@ pub fn roots_of_unity_6(n: usize) -> Vec<Cplx> {
 	let mut out = Vec::with_capacity(lstar);
 	for j in 0..lstar {
 		out.push(Cplx::new(c[j], s[j]));
+		// We assemble the output with 2 existing real
+		// and imaginary vectors. Can SoA ComplexArray
+		// pretty easily down the line.
 	}
 	out
+}
+// TODO: Fix, because this totally doesn't work yet.
+// Need [0..=m] calculation for roots_of_unity(n), not
+// all of roots_of_unity(m). Not sure how to do that for recursive bisection.
+pub fn symmetry_abuse_roots_of_unity(n: usize) -> Vec<Cplx> {
+	if n < 8 {
+		return roots_of_unity_6(n);
+	}
+
+	let m = n >> 3;
+
+	let eighth = roots_of_unity_6(m);
+	let mut out = Vec::with_capacity(n);
+	out.extend_from_slice(&eighth);
+	for i in (0..m).rev() {
+		out.push(Cplx::new(-eighth[i].im, -eighth[i].re));
+	}
+	for i in 0..m {
+		out.push(Cplx::new(eighth[i].im, -eighth[i].re));
+	}
+	for i in (0..m).rev() {
+		out.push(Cplx::new(-eighth[i].re, eighth[i].im));
+	}
+
+	return out;
 }
