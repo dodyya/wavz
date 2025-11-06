@@ -1,7 +1,7 @@
 // use std::io::{Read, Result, Seek};
 
 use std::io::{self, SeekFrom};
-use std::ptr::NonNull;
+use std::ptr::{NonNull, slice_from_raw_parts_mut};
 
 #[repr(C, packed(1))]
 struct ChunkHeader {
@@ -162,18 +162,35 @@ pub fn parse1(b: &[u8]) {
 // 	}
 // }
 
-struct RiffWavePcm {
-	num_interleaved_channels: u16,
-	samples_per_second: u32,
-	samples: Box<[i16]>,
+pub struct RiffWavePcm {
+	pub samples_per_second: u32,
+	pub samples: Box<[i16]>,
 }
 
-struct RiffWavePcmMono {
-	samples_per_second: u32,
-	samples: Box<[i16]>,
-}
+pub fn parse(source: impl io::Read + io::Seek) -> io::Result<RiffWavePcm> {
+	fn avg_perfect(slice: &[i16]) -> i16 {
+		// https://github.com/ascent12/average/blob/master/avg.c
 
-pub fn parse(source: impl io::Read + io::Seek) -> io::Result<()> {
+		let n = slice.len() as i64;
+		let mut avg = 0i16;
+
+		let mut error = 0;
+
+		for i in 0..slice.len() {
+			error += (slice[i] as i64 % n) as i16;
+			avg += ((slice[i] as i64 / n) + (error as i64 / n)) as i16;
+			error = (error as i64 % n) as i16;
+		}
+
+		if avg < 0 && error > 0 {
+			avg += 1;
+		} else if avg > 0 && error < 0 {
+			avg -= 1;
+		}
+
+		avg
+	}
+
 	let mut source = source;
 	// TODO could be uninit instead of zero, bench later to see if it matters
 	//      but then that means i have to use the shitty unstable api for it
@@ -208,10 +225,13 @@ pub fn parse(source: impl io::Read + io::Seek) -> io::Result<()> {
 	let mut chunk_header = ChunkHeader::zeroed();
 	let mut cur_pos = 0;
 
-	while cur_pos < file_len {
-		source.read_exact(chunk_header.as_bytes_mut())?;
+	source.read_exact(chunk_header.as_bytes_mut())?;
 
+	while cur_pos < file_len {
 		chunk_header.remove_later_print(); // TODO remove
+		if chunk_header.tag == *b"data" {
+			break;
+		}
 
 		// TODO: replace try_into().unwrap() with something better
 		cur_pos = source
@@ -220,7 +240,72 @@ pub fn parse(source: impl io::Read + io::Seek) -> io::Result<()> {
 			))?
 			.try_into()
 			.unwrap();
+
+		source.read_exact(chunk_header.as_bytes_mut())?;
 	}
+	if cur_pos >= file_len {
+		return Err(io::Error::other("no data section found"));
+	}
+
+	let num_channels = u16::from_le_bytes(riff_data.num_channels) as usize;
+	let num_samples_per_channel =
+		u32::from_le_bytes(chunk_header.len) as usize / size_of::<i16>() / num_channels;
+
+	dbg!(num_channels, num_samples_per_channel);
+
+	fn make_sample_buf(samples_per_channel: usize) -> NonNull<[i16]> {
+		let buf = Box::<[i16]>::new_zeroed_slice(samples_per_channel);
+		let ptr = Box::into_raw(buf) as *mut [i16];
+		NonNull::new(ptr).unwrap()
+	}
+
+	let buf = make_sample_buf(num_samples_per_channel);
+
+	let mut samples_ptr: NonNull<[u8]> = NonNull::slice_from_raw_parts(
+		buf.cast(),
+		num_samples_per_channel * size_of::<i16>() / size_of::<u8>(),
+	);
+
+	// switch from passing around box slice to passing around &mut slice
+	// then make NN::s_f_r_p.as_mut helper to transmute when needed
+	{
+		// SAFETY: original box has been destructed, length has been scaled, u8 and i16 are POD,
+		// u8 align <= i16 align
+		let samples_slice = unsafe { samples_ptr.as_mut() };
+
+		dbg!(samples_slice.len());
+		samples_slice.as_mut_ptr();
+
+		source.read_exact(samples_slice)?;
+
+		if num_channels > 1 {
+			for i in 0..samples_slice.len() / 4 {
+				// avg_perfect(&samples_slice[i * 4..i * 4 + num_channels]);
+			}
+
+			// average original slice
+			// TODO: allocate identical slice, fill, average, append to original slice
+		}
+	}
+
+	let samples_buf = unsafe { Box::<[i16]>::from_raw(buf.as_ptr()) };
+
+	// dbg!(data_size);
+	// let buf = {
+	// 	let ptr = Box::into_raw(Box::<[i16]>::new_zeroed_slice(data_size / 2)) as *mut i16;
+	// 	// *2 because size(i16)/size(u8)
+	// 	let slice = unsafe { &mut *slice_from_raw_parts_mut(ptr.cast::<u8>(), data_size) };
+	// 	dbg!(slice.len());
+
+	// 	source.read_exact(slice)?;
+	// 	unsafe {
+	// 		Box::from_raw(slice_from_raw_parts_mut(
+	// 			slice.as_mut_ptr().cast::<i16>(),
+	// 			slice.len() / 2,
+	// 		))
+	// 	}
+	// };
+	// dbg!(buf.len());
 
 	// TODO: validate `format_data`, error if bad (not WAVE_FORMAT_PCM, that is all i cba to support rn)
 	// TODO: we have all the data we need from header. keep going, parse next blocks
@@ -228,5 +313,9 @@ pub fn parse(source: impl io::Read + io::Seek) -> io::Result<()> {
 	// if block == data, read length, allocate buffer, write to buffer, construct return type struct, exit early.
 	// else, no data found, error
 
-	Ok(())
+	Ok(RiffWavePcm {
+		samples_per_second: u32::from_le_bytes(riff_data.sample_blocks_per_sec)
+			/ u16::from_le_bytes(riff_data.num_channels) as u32,
+		samples: samples_buf,
+	})
 }
