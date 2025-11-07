@@ -75,11 +75,22 @@ mod tests {
 	}
 
 	#[test]
-	//NOTE: See how the inplace, i16 fixed point
-	// version does not compute the frequencies as
-	// accurately as the copy version.
-	// This is because the inplace version has literally
-	// half of the bits.
+	fn test_sine_gen() {
+		let sine4 = generate_sinewave(4);
+		assert!(sine4[0].abs() < 0.0001);
+		assert!(sine4[2].abs() < 0.0001);
+		assert!((sine4[1] - Fix::MAX).abs() < 0.0001);
+		assert!((sine4[3] - Fix::MIN).abs() < 0.0001);
+
+		let sine32 = generate_sinewave(32);
+		dbg!(sine32); //visually inspect for resembling sine.
+	}
+
+	#[test]
+	// NOTE: See how the inplace, i16 fixed point
+	// version does not compute the frequencies as accurately as the copy version.
+	// (In the sense that their relative magnitudes aren't the same)
+	// This is because the inplace version has literally half of the bits.
 	fn decompose_cos_sum_inplace() {
 		let size = 1 << 11;
 		let mut re = Vec::<Fix>::with_capacity(size);
@@ -106,7 +117,7 @@ mod tests {
 		for j in 0..size / 2 {
 			let r = re[j];
 			let i = im[j];
-			if r * r + i * i > 0.3 {
+			if r * r + i * i > 0.01 {
 				println!("frequency {j} had magnitude {:.4} ", r * r + i * i);
 			}
 		}
@@ -118,5 +129,32 @@ mod tests {
 		assert_eq!(Fix::MAX.to_bits(), i16::MAX);
 		assert_eq!(Fix::from_bits(0), Fix::ZERO);
 		// Takeaway: use .from_bits(i16) to turn any i16 with an "equivalent" float in [-1, 1)
+	}
+
+	#[test]
+	fn integration() {
+		use crate::parser::RiffWavePcm;
+		let file = File::open("pure-tone.wav").unwrap();
+		let RiffWavePcm { samples_per_second, samples } = parse(file).unwrap();
+		let mut samples = &*Box::leak(samples); // ez borrow checker error fix
+		//calculate biggest power of 2
+		let size = samples.len().next_power_of_two() / 2;
+		println!("{}", size);
+		let mut re: Vec<Fix> = Vec::with_capacity(size);
+		let mut im: Vec<Fix> = Vec::with_capacity(size);
+
+		for i in 0..size {
+			re.push(Fix::from_bits(samples[i]));
+			im.push(Fix::ZERO);
+		}
+
+		fft_inplace(&mut re, &mut im);
+		for j in 0..size / 2 {
+			let r = re[j];
+			let i = im[j];
+			if r * r + i * i > 0.3 {
+				println!("frequency {j} had magnitude {:.4} ", r * r + i * i);
+			}
+		}
 	}
 }

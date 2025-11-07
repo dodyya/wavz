@@ -38,34 +38,28 @@ pub fn copy_fft(a: &[Cplx]) -> Vec<Cplx> {
 }
 
 // TODO: memoize somehow. Fix a constant num samples and gen sinewave once.
-fn generate_sinewave(num_samples: usize) -> Vec<Fix> {
+pub fn generate_sinewave(num_samples: usize) -> Vec<Fix> {
 	let mut sinewave = Vec::with_capacity(num_samples);
 	for i in 0..num_samples {
 		sinewave.push(Fix::from_bits(
-			(((i as f32 * std::f32::consts::TAU / num_samples as f32).sin()) * i32::MAX as f32)
+			(((i as f32 * std::f32::consts::TAU / num_samples as f32).sin()) * i16::MAX as f32)
 				as i16,
 		));
 	}
 	sinewave
 }
 
-/// Takes in imaginary slice as real and imaginary parts, and
+/// Takes in a complex slice as real and imaginary parts, and
 /// performs the FFT in-place. Magic.
 pub fn fft_inplace(fr: &mut Vec<Fix>, fi: &mut Vec<Fix>) {
-	#[inline]
-	fn bit_rev(m: usize, mr: &mut usize) {
-		//MAGIC
-		*mr = ((m >> 1) & 0x5555) | ((m & 0x5555) << 1);
-		*mr = ((*mr >> 2) & 0x3333) | ((*mr & 0x3333) << 2);
-		*mr = ((*mr >> 4) & 0x0F0F) | ((*mr & 0x0F0F) << 4);
-		*mr = ((*mr >> 8) & 0x00FF) | ((*mr & 0x00FF) << 8);
-	}
+	let n = fr.len();
+	assert!(n.is_power_of_two() && fi.len() == n);
+
+	let bits = n.ilog2() as u32;
 
 	let num_samples: usize = fr.len();
-	let sinewave = generate_sinewave(num_samples);
-	let num_samples_m_1: usize = fr.len() - 1;
+	let sinewave: Vec<Fix> = generate_sinewave(num_samples);
 	let log2_num_samples = num_samples.ilog2() as usize;
-	let shift_amt = 16i32 - log2_num_samples as i32;
 
 	let mut tr: Fix; // temporary storage for swapping
 	let mut ti: Fix;
@@ -84,18 +78,12 @@ pub fn fft_inplace(fr: &mut Vec<Fix>, fi: &mut Vec<Fix>) {
 	let mut qr: Fix; // Temporary variables used during DL part of algorithm
 	let mut qi: Fix;
 
-	// m is one of indices being swapped
-	let mut mr: usize = 0; // the other index being swapped
-	for m in 1..num_samples_m_1 {
-		bit_rev(m, &mut mr);
-		mr >>= shift_amt;
-		// don't swap that which has already been swapped
-		if mr <= m {
-			continue;
-		};
-		// swap the bit-reveresed indices
-		fr.swap(m, mr);
-		fi.swap(m, mr);
+	for m in 1..n - 1 as usize {
+		let mr = m.reverse_bits() >> (usize::BITS - bits);
+		if mr > m {
+			fr.swap(m, mr);
+			fi.swap(m, mr);
+		}
 	}
 
 	l = 1;
