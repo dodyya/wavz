@@ -7,12 +7,9 @@ mod tests {
 	use std::cmp::max;
 	use std::fs::{File, read};
 
-	use crate::{
-		complex::{Cplx, PI},
-		fft::*,
-	};
-
 	use super::parser::{parse, parse1};
+	use crate::complex::{Cplx, PI};
+	use crate::fft::{fft, *};
 
 	// TODO: rename/remove irrelevant tests
 
@@ -24,7 +21,7 @@ mod tests {
 
 	#[test]
 	fn test_big_wav_read() {
-		let file = read("./choplin.wav").unwrap();
+		let file = read("./chopin.wav").unwrap();
 		parse1(&*file);
 	}
 
@@ -32,13 +29,19 @@ mod tests {
 	fn wav_read_real_parse() {
 		let mut file = File::open("./pure-tone.wav").unwrap();
 
-		parse(&mut file).unwrap();
+		let output = parse(&mut file).unwrap();
+		let (sps, samp) = dbg!(output.samples_per_second, output.samples.len());
+		dbg!(samp / sps as usize);
+		assert!(samp / sps as usize == 40);
 	}
 	#[test]
 	fn big_wav_read_real_parse() {
-		let mut file = File::open("./choplin.wav").unwrap();
+		let mut file = File::open("./chopin.wav").unwrap();
 
-		parse(&mut file).unwrap();
+		let output = parse(&mut file).unwrap();
+		let (sps, samp) = dbg!(output.samples_per_second, output.samples.len());
+		dbg!(samp / sps as usize, 29 * 60 + 25);
+		assert!(samp / sps as usize == 29 * 60 + 25);
 	}
 
 	#[test]
