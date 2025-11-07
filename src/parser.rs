@@ -1,13 +1,27 @@
 use std::io::{self, SeekFrom};
-use std::ptr::NonNull;
 
-use bytemuck::{Pod, Zeroable, must_cast_mut, must_cast_ref, must_cast_slice_mut, zeroed};
+use bytemuck::{
+	Pod,
+	Zeroable,
+	must_cast_mut,
+	must_cast_ref,
+	must_cast_slice_mut,
+	zeroed_slice_box,
+};
+
+// TODO newtype this, repr transparent, pod, zeroable, to/from byte?
+type Sample = i16;
 
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 #[repr(C)]
 struct ChunkHeader {
 	tag: [u8; 4],
 	len: u32,
+}
+impl ChunkHeader {
+	fn is_data(&self) -> bool {
+		self.tag == *b"data"
+	}
 }
 
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
@@ -73,28 +87,28 @@ pub struct RiffWavePcm {
 }
 
 pub fn parse(source: impl io::Read + io::Seek) -> io::Result<RiffWavePcm> {
-	// fn avg_perfect(slice: &[i16]) -> i16 {
-	// 	// https://github.com/ascent12/average/blob/master/avg.c
+	fn avg_perfect(slice: &[i16]) -> i16 {
+		// https://github.com/ascent12/average/blob/master/avg.c
 
-	// 	let n = slice.len() as i64;
-	// 	let mut avg = 0i16;
+		let n = slice.len() as i64;
+		let mut avg = 0i16;
 
-	// 	let mut error = 0;
+		let mut error = 0;
 
-	// 	for i in 0..slice.len() {
-	// 		error += (slice[i] as i64 % n) as i16;
-	// 		avg += ((slice[i] as i64 / n) + (error as i64 / n)) as i16;
-	// 		error = (error as i64 % n) as i16;
-	// 	}
+		for i in 0..slice.len() {
+			error += (slice[i] as i64 % n) as i16;
+			avg += ((slice[i] as i64 / n) + (error as i64 / n)) as i16;
+			error = (error as i64 % n) as i16;
+		}
 
-	// 	if avg < 0 && error > 0 {
-	// 		avg += 1;
-	// 	} else if avg > 0 && error < 0 {
-	// 		avg -= 1;
-	// 	}
+		if avg < 0 && error > 0 {
+			avg += 1;
+		} else if avg > 0 && error < 0 {
+			avg -= 1;
+		}
 
-	// 	avg
-	// }
+		avg
+	}
 
 	let mut source = source;
 	// TODO could be uninit instead of zero, bench later to see if it matters
@@ -127,41 +141,61 @@ pub fn parse(source: impl io::Read + io::Seek) -> io::Result<RiffWavePcm> {
 		},
 	};
 
-	let file_len = size_of::<ChunkHeader>() as u32 + riff_data.riff_header.len;
-	let mut chunk_header = ChunkHeader::zeroed();
-	let mut cur_pos = 0;
+	// TODO turn into ext method or standalone, make return instead of panic
+	// actually use it as an enum, right? then make extmethod on enum or use matches! or something
+	assert!(data_format == [1, 0]); // PCM
 
-	source.read_exact(must_cast_mut::<_, [_; 8]>(&mut chunk_header))?;
+	let num_bytes = loop {
+		let mut header = ChunkHeader::zeroed();
+		source.read_exact(must_cast_mut::<_, [_; 8]>(&mut header))?;
 
-	while cur_pos < file_len {
-		if chunk_header.tag == *b"data" {
-			break;
+		if header.is_data() {
+			break header.len as usize;
 		}
 
-		// TODO: replace try_into().unwrap() with something better
-		cur_pos = source
-			.seek(SeekFrom::Current(chunk_header.len as i64))?
-			.try_into()
-			.unwrap();
+		source.seek(SeekFrom::Current(header.len as i64))?;
+	};
 
-		source.read_exact(must_cast_mut::<_, [_; 8]>(&mut chunk_header))?;
-	}
-	if cur_pos >= file_len {
-		return Err(io::Error::other("no data section found"));
-	}
-
+	let num_samples = num_bytes / size_of::<i16>();
 	let num_channels = riff_data.num_channels as usize;
-	let num_samples_per_channel = chunk_header.len as usize / size_of::<i16>() / num_channels;
 
-	dbg!(num_channels, num_samples_per_channel);
+	let num_samples_per_channel = num_samples / num_channels;
 
-	// TODO: we have all the data we need from header. keep going, parse next blocks
-	// if blocks != data, Seek over them
+	dbg!(num_samples, num_channels, num_samples_per_channel);
+
 	// if block == data, read length, allocate buffer, write to buffer, construct return type struct, exit early.
-	// else, no data found, error
+
+	let mut buf = zeroed_slice_box::<i16>(num_samples_per_channel);
+	println!("T allocated buf size {num_samples_per_channel}");
+
+	if num_channels == 1 {
+		source.read_exact(must_cast_slice_mut::<_, u8>(&mut buf))?;
+	} else {
+		let mut index = 0;
+		let mut num_remaining_samples = num_samples;
+		let mut temp_samples = zeroed_slice_box::<i16>(num_samples.min(10_000_000 * num_channels));
+		println!("T allocated temp buf size {}", temp_samples.len());
+
+		while num_remaining_samples > 0 {
+			let num_samples_to_read = num_remaining_samples.min(temp_samples.len());
+			let temp_samples_buf = &mut temp_samples[..num_samples_to_read];
+			println!("T reading {num_samples_to_read} samples");
+			source.read_exact(must_cast_slice_mut::<_, u8>(temp_samples_buf))?;
+			num_remaining_samples -= num_samples_to_read;
+
+			// compress
+			for (idx, chunk) in temp_samples_buf.chunks_exact(num_channels).enumerate() {
+				buf[index] = avg_perfect(chunk);
+				index += 1;
+			}
+		}
+		dbg!(index);
+	}
 
 	Ok(RiffWavePcm {
-		samples_per_second: riff_data.sample_blocks_per_sec / riff_data.num_channels as u32,
-		samples: todo!(),
+		samples_per_second: riff_data.bytes_per_second
+			/ size_of::<i16>() as u32
+			/ riff_data.num_channels as u32,
+		samples: buf,
 	})
 }

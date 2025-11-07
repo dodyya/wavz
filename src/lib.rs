@@ -40,7 +40,7 @@ mod tests {
 
 		let output = parse(&mut file).unwrap();
 		let (sps, samp) = dbg!(output.samples_per_second, output.samples.len());
-		dbg!(samp / sps as usize);
+		dbg!(samp / sps as usize, 29 * 60 + 25);
 		assert!(samp / sps as usize == 29 * 60 + 25);
 	}
 

@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bytemuck = { version = "1.24.0", default-features = false, features = ["latest_stable_rust"]}
+bytemuck = { version = "1.24.0", default-features = false, features = ["extern_crate_alloc", "latest_stable_rust"] }
 num-traits = "0.2.19"
