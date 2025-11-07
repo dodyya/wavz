@@ -75,6 +75,11 @@ mod tests {
 	}
 
 	#[test]
+	//NOTE: See how the inplace, i16 fixed point
+	// version does not compute the frequencies as
+	// accurately as the copy version.
+	// This is because the inplace version has literally
+	// half of the bits.
 	fn decompose_cos_sum_inplace() {
 		let size = 1 << 11;
 		let mut re = Vec::<Fix>::with_capacity(size);
@@ -101,7 +106,7 @@ mod tests {
 		for j in 0..size / 2 {
 			let r = re[j];
 			let i = im[j];
-			if r * r + i * i > 0.2 {
+			if r * r + i * i > 0.3 {
 				println!("frequency {j} had magnitude {:.4} ", r * r + i * i);
 			}
 		}

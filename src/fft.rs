@@ -50,7 +50,16 @@ fn generate_sinewave(num_samples: usize) -> Vec<Fix> {
 }
 
 /// Takes in imaginary slice as real and imaginary parts
-pub fn fft_inplace(fr: &mut [Fix], fi: &mut [Fix]) {
+pub fn fft_inplace(fr: &mut Vec<Fix>, fi: &mut Vec<Fix>) {
+	#[inline]
+	fn bit_swap(m: usize, mr: &mut usize) {
+		//MAGIC
+		*mr = ((m >> 1) & 0x5555) | ((m & 0x5555) << 1);
+		*mr = ((*mr >> 2) & 0x3333) | ((*mr & 0x3333) << 2);
+		*mr = ((*mr >> 4) & 0x0F0F) | ((*mr & 0x0F0F) << 4);
+		*mr = ((*mr >> 8) & 0x00FF) | ((*mr & 0x00FF) << 8);
+	}
+
 	let num_samples: usize = fr.len();
 	let sinewave = generate_sinewave(num_samples);
 	let num_samples_m_1: usize = fr.len() - 1;
@@ -75,29 +84,17 @@ pub fn fft_inplace(fr: &mut [Fix], fi: &mut [Fix]) {
 	let mut qi: Fix;
 
 	// m is one of indices being swapped
-	let mut mr: usize; // the other index being swapped
+	let mut mr: usize = 0; // the other index being swapped
 	for m in 1..num_samples_m_1 {
-		mr = ((m >> 1) & 0x5555) | ((m & 0x5555) << 1);
-		// swap consecutive pairs
-		mr = ((mr >> 2) & 0x3333) | ((mr & 0x3333) << 2);
-		// swap nibbles ...
-		mr = ((mr >> 4) & 0x0F0F) | ((mr & 0x0F0F) << 4);
-		// swap bytes
-		mr = ((mr >> 8) & 0x00FF) | ((mr & 0x00FF) << 8);
-		// shift down mr
+		bit_swap(m, &mut mr);
 		mr >>= shift_amt;
 		// don't swap that which has already been swapped
 		if mr <= m {
 			continue;
 		};
 		// swap the bit-reveresed indices
-		// TODO: maybe do mem swap?
-		tr = fr[m];
-		fr[m] = fr[mr];
-		fr[mr] = tr;
-		ti = fi[m];
-		fi[m] = fi[mr];
-		fi[mr] = ti;
+		fr.swap(m, mr);
+		fi.swap(m, mr);
 	}
 
 	l = 1;
@@ -107,7 +104,7 @@ pub fn fft_inplace(fr: &mut [Fix], fi: &mut [Fix]) {
 		istep = l << 1;
 		for m in 0..l {
 			j = m << k;
-			// todo!();
+
 			wr = sinewave[j + num_samples / 4];
 			wi = -sinewave[j];
 			wr >>= 1;
