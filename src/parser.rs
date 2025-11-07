@@ -161,12 +161,9 @@ pub fn parse(source: impl io::Read + io::Seek) -> io::Result<RiffWavePcm> {
 
 	let num_samples_per_channel = num_samples / num_channels;
 
-	dbg!(num_samples, num_channels, num_samples_per_channel);
-
 	// if block == data, read length, allocate buffer, write to buffer, construct return type struct, exit early.
 
 	let mut buf = zeroed_slice_box::<i16>(num_samples_per_channel);
-	println!("T allocated buf size {num_samples_per_channel}");
 
 	if num_channels == 1 {
 		source.read_exact(must_cast_slice_mut::<_, u8>(&mut buf))?;
@@ -174,22 +171,19 @@ pub fn parse(source: impl io::Read + io::Seek) -> io::Result<RiffWavePcm> {
 		let mut index = 0;
 		let mut num_remaining_samples = num_samples;
 		let mut temp_samples = zeroed_slice_box::<i16>(num_samples.min(10_000_000 * num_channels));
-		println!("T allocated temp buf size {}", temp_samples.len());
 
 		while num_remaining_samples > 0 {
 			let num_samples_to_read = num_remaining_samples.min(temp_samples.len());
 			let temp_samples_buf = &mut temp_samples[..num_samples_to_read];
-			println!("T reading {num_samples_to_read} samples");
 			source.read_exact(must_cast_slice_mut::<_, u8>(temp_samples_buf))?;
 			num_remaining_samples -= num_samples_to_read;
 
-			// compress
+			// TODO this is terrible, fix
 			for (idx, chunk) in temp_samples_buf.chunks_exact(num_channels).enumerate() {
 				buf[index] = avg_perfect(chunk);
 				index += 1;
 			}
 		}
-		dbg!(index);
 	}
 
 	Ok(RiffWavePcm {
