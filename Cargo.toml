@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 bytemuck = { version = "1.24.0", default-features = false, features = ["extern_crate_alloc", "latest_stable_rust"] }
 cpal = "0.16.0"
+fixed = "1.29.0"
 num-traits = "0.2.19"
