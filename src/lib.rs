@@ -149,12 +149,25 @@ mod tests {
 		}
 
 		fft_inplace(&mut re, &mut im);
+		let mut max_index: usize = 0;
 		for j in 0..size / 2 {
 			let r = re[j];
 			let i = im[j];
-			if r * r + i * i > 0.3 {
+			if r * r + i * i > re[max_index] * re[max_index] + im[max_index] * im[max_index] {
+				max_index = j;
+			}
+			if r * r + i * i > 0.0001 {
 				println!("frequency {j} had magnitude {:.4} ", r * r + i * i);
 			}
 		}
+
+		assert!(max_index == 4755);
+
+		// quick math: 262144 samples, audio is 800hz. 44.1k samples per second. Then,
+		// each bin corresponds to a sinusoidal which has a frequency of the bin
+		// index measured in units of cycles per frame. 4755 cycles/frame.
+		// we have sample rate f_s = 44.1kHz. FFT size 262144. Then our bin spacing is 44100/262144
+		// = 0.1682281494 Hz. Multiply that spacing by 4755 to get 799.9999....
+		// Yayy!
 	}
 }
