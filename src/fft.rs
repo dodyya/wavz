@@ -49,10 +49,11 @@ fn generate_sinewave(num_samples: usize) -> Vec<Fix> {
 	sinewave
 }
 
-/// Takes in imaginary slice as real and imaginary parts
+/// Takes in imaginary slice as real and imaginary parts, and
+/// performs the FFT in-place. Magic.
 pub fn fft_inplace(fr: &mut Vec<Fix>, fi: &mut Vec<Fix>) {
 	#[inline]
-	fn bit_swap(m: usize, mr: &mut usize) {
+	fn bit_rev(m: usize, mr: &mut usize) {
 		//MAGIC
 		*mr = ((m >> 1) & 0x5555) | ((m & 0x5555) << 1);
 		*mr = ((*mr >> 2) & 0x3333) | ((*mr & 0x3333) << 2);
@@ -86,7 +87,7 @@ pub fn fft_inplace(fr: &mut Vec<Fix>, fi: &mut Vec<Fix>) {
 	// m is one of indices being swapped
 	let mut mr: usize = 0; // the other index being swapped
 	for m in 1..num_samples_m_1 {
-		bit_swap(m, &mut mr);
+		bit_rev(m, &mut mr);
 		mr >>= shift_amt;
 		// don't swap that which has already been swapped
 		if mr <= m {
