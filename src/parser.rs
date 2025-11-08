@@ -1,3 +1,5 @@
+use std::error::Error;
+use std::fmt::{self, Display};
 use std::io::{self, SeekFrom};
 
 use bytemuck::{
@@ -19,18 +21,79 @@ struct ChunkHeader {
 	len: u32,
 }
 impl ChunkHeader {
-	fn is_data(&self) -> bool {
-		self.tag == *b"data"
+	const DATA_TAG: [u8; 4] = *b"data";
+	const FORMAT_TAG: [u8; 4] = *b"fmt ";
+	const RIFF_TAG: [u8; 4] = *b"RIFF";
+
+	fn is_data(self) -> bool {
+		self.tag == Self::DATA_TAG
 	}
+
+	fn is_format(self) -> bool {
+		self.tag == Self::FORMAT_TAG
+	}
+
+	fn is_riff(self) -> bool {
+		self.tag == Self::RIFF_TAG
+	}
+}
+
+#[non_exhaustive]
+enum FormatSizeConvError {
+	IncorrectSize(u32),
+}
+impl fmt::Display for FormatSizeConvError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::IncorrectSize(size) => {
+				write!(
+					f,
+					"format chunk size of {size} is invalid. must be one of 16, 18, or 40",
+				)
+			},
+		}
+	}
+}
+impl fmt::Debug for FormatSizeConvError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		<Self as fmt::Display>::fmt(&self, f)
+	}
+}
+impl Error for FormatSizeConvError {}
+
+#[repr(u32)]
+enum FormatSize {
+	Size16 = Self::SIZE16,
+	Size18 = Self::SIZE18,
+	Size40 = Self::SIZE40,
+}
+impl FormatSize {
+	const SIZE16: u32 = 16;
+	const SIZE18: u32 = 18;
+	const SIZE40: u32 = 40;
+
+	const fn new(size: u32) -> Result<Self, FormatSizeConvError> {
+		match size {
+			Self::SIZE16 => Ok(Self::Size16),
+			Self::SIZE18 => Ok(Self::Size18),
+			Self::SIZE40 => Ok(Self::Size40),
+			size => Err(FormatSizeConvError::IncorrectSize(size)),
+		}
+	}
+}
+
+#[repr(u16)]
+enum DataFormat {
+	Pcm = 0x0001,
+	Extensible = 0xfffe,
 }
 
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 #[repr(C)]
-struct RiffData {
+struct RawRiffData {
 	riff_header: ChunkHeader,
 	wave_tag: [u8; 4],
-	format_tag: [u8; 4],
-	format_size: u32,
+	format_header: ChunkHeader,
 	data_format: [u8; 2],
 	num_channels: u16,
 	sample_blocks_per_sec: u32,
@@ -38,29 +101,32 @@ struct RiffData {
 	sample_block_size: u16,
 	bits_per_sample: u16,
 }
-impl RiffData {
-	const RIFF_TAG: [u8; 4] = *b"RIFF";
+impl RawRiffData {
+	const WAVE_TAG: [u8; 4] = *b"WAVE";
 
-	// TODO: more constants for validation. ex: *b"dat "
+	fn is_valid(&self) -> bool {
+		self.riff_header.is_riff() && true
+	}
 	// TODO: fn to extract Result<enumized data_format>
 
 	// TODO: fn validate(&self) -> bool or maybe Result<(), Error impl Into io::Error>
 }
 
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
-#[repr(C)]
-struct EmptyExtention {
-	extension_size: u16, // 0
-}
+#[repr(transparent)]
+struct EmptyExtention(u16);
 impl EmptyExtention {
-	// TODO: constants for validation. 0
-	// TODO: fn validate(&self) -> bool
+	const EXTENTION_SIZE: u16 = 0;
+
+	fn is_valid(self) -> bool {
+		self.0 == Self::EXTENTION_SIZE
+	}
 }
 
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 #[repr(C)]
 struct WaveExtention {
-	extension_size: u16,
+	extension_size: u16, // 22
 	valid_bits_per_sample: u16,
 	speaker_position_mask: [u8; 4],
 	data_format: [u8; 2],
@@ -73,10 +139,10 @@ impl WaveExtention {
 }
 
 pub fn parse1(b: &[u8]) {
-	let mut arr = [0u32; size_of::<RiffData>() / 4];
-	must_cast_slice_mut::<_, u8>(&mut arr).copy_from_slice(&b[..size_of::<RiffData>()]);
+	let mut arr = [0u32; size_of::<RawRiffData>() / 4];
+	must_cast_slice_mut::<_, u8>(&mut arr).copy_from_slice(&b[..size_of::<RawRiffData>()]);
 
-	let riff: &RiffData = must_cast_ref(&arr);
+	let riff: &RawRiffData = must_cast_ref(&arr);
 
 	println!("{riff:#?}");
 }
@@ -87,9 +153,8 @@ pub struct RiffWavePcm {
 }
 
 pub fn parse(source: impl io::Read + io::Seek) -> io::Result<RiffWavePcm> {
+	/// https://github.com/ascent12/average/blob/master/avg.c
 	fn avg_perfect(slice: &[i16]) -> i16 {
-		// https://github.com/ascent12/average/blob/master/avg.c
-
 		let n = slice.len() as i64;
 		let mut avg = 0i16;
 
@@ -112,32 +177,39 @@ pub fn parse(source: impl io::Read + io::Seek) -> io::Result<RiffWavePcm> {
 
 	let mut source = source;
 	// TODO could be uninit instead of zero, bench later to see if it matters
-	let mut riff_data = RiffData::zeroed();
+	let mut riff_data = RawRiffData::zeroed();
 
 	source.read_exact(must_cast_mut::<_, [_; 36]>(&mut riff_data))?;
 
+	if !riff_data.riff_header.is_riff() {
+		return Err(io::Error::other("chunk header must be \"RIFF\""));
+	}
+
 	// TODO validate read here when implemented
 
-	let data_format = match riff_data.format_size {
-		16 => riff_data.data_format,
-		18 => {
-			source.read_exact(must_cast_mut::<_, [_; 2]>(&mut EmptyExtention::zeroed()))?;
-			// TODO: assert that this read is zero when implemented
+	let format_size = FormatSize::new(riff_data.format_header.len).map_err(io::Error::other)?;
+
+	let data_format = match format_size {
+		FormatSize::Size16 => riff_data.data_format,
+		FormatSize::Size18 => {
+			let mut ext = EmptyExtention::zeroed();
+			source.read_exact(must_cast_mut::<_, [_; 2]>(&mut ext))?;
+
+			if !ext.is_valid() {
+				return Err(io::Error::other(format!(
+					"incorrect extention length of {}, expected 0",
+					ext.0
+				)));
+			}
 
 			riff_data.data_format
 		},
-		40 => {
+		FormatSize::Size40 => {
 			let mut extention = WaveExtention::zeroed();
 			source.read_exact(must_cast_mut::<_, [_; 24]>(&mut extention))?;
 			// TODO: assert that extsize=22, that data is correct when implemented
 
 			extention.data_format
-		},
-		_ => {
-			// TODO parse, don't validate: make this returned by ? on parse fn
-			return Err(io::Error::other(
-				"invalid format_size length: must be 16, 18, or 40",
-			));
 		},
 	};
 
