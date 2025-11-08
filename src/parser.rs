@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt::{self, Display};
 use std::io::{self, SeekFrom};
+use std::str::from_utf8;
 
 use bytemuck::{
 	Pod,
@@ -123,6 +124,32 @@ impl EmptyExtention {
 	}
 }
 
+#[non_exhaustive]
+enum WaveExtValidError {
+	IncorrectSize(u16),
+	IncorrectTag,
+}
+impl fmt::Display for WaveExtValidError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::IncorrectSize(size) => {
+				// TODO
+				write!(
+					f,
+					"format chunk size of {size} is invalid. must be one of 16, 18, or 40",
+				)
+			},
+			Self::IncorrectTag => todo!(),
+		}
+	}
+}
+impl fmt::Debug for WaveExtValidError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		<Self as fmt::Display>::fmt(&self, f)
+	}
+}
+impl Error for WaveExtValidError {}
+
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 #[repr(C)]
 struct WaveExtention {
@@ -133,9 +160,20 @@ struct WaveExtention {
 	extention_tag: [u8; 14],
 }
 impl WaveExtention {
-	// TODO: constants for validation, like the tag + size + data_format
+	const EXTENSION_SIZE: u16 = 22;
+	const TAG: [u8; 14] = *b"\x00\x00\x00\x00\x10\x00\x80\x00\x00\xAA\x00\x38\x9B\x71";
 
-	// TODO: fn validate(&self) -> bool
+	fn data_format(&self) -> Result<DataFormat, WaveExtValidError> {
+		if self.extension_size != Self::EXTENSION_SIZE {
+			return Err(WaveExtValidError::IncorrectSize(self.extension_size));
+		}
+		if self.extention_tag != Self::TAG {
+			println!("TAG {:X?}", self.extention_tag);
+			return Err(WaveExtValidError::IncorrectTag);
+		}
+		// TODO check if data format is actually pcm
+		Ok(DataFormat::Pcm)
+	}
 }
 
 pub fn parse1(b: &[u8]) {
@@ -185,12 +223,13 @@ pub fn parse(source: impl io::Read + io::Seek) -> io::Result<RiffWavePcm> {
 		return Err(io::Error::other("chunk header must be \"RIFF\""));
 	}
 
-	// TODO validate read here when implemented
-
 	let format_size = FormatSize::new(riff_data.format_header.len).map_err(io::Error::other)?;
 
 	let data_format = match format_size {
-		FormatSize::Size16 => riff_data.data_format,
+		FormatSize::Size16 => {
+			// riff_data.data_format
+			DataFormat::Pcm
+		},
 		FormatSize::Size18 => {
 			let mut ext = EmptyExtention::zeroed();
 			source.read_exact(must_cast_mut::<_, [_; 2]>(&mut ext))?;
@@ -202,20 +241,19 @@ pub fn parse(source: impl io::Read + io::Seek) -> io::Result<RiffWavePcm> {
 				)));
 			}
 
-			riff_data.data_format
+			// riff_data.data_format
+			DataFormat::Pcm
 		},
 		FormatSize::Size40 => {
-			let mut extention = WaveExtention::zeroed();
-			source.read_exact(must_cast_mut::<_, [_; 24]>(&mut extention))?;
-			// TODO: assert that extsize=22, that data is correct when implemented
-
-			extention.data_format
+			let mut ext = WaveExtention::zeroed();
+			source.read_exact(must_cast_mut::<_, [_; 24]>(&mut ext))?;
+			ext.data_format().map_err(io::Error::other)?
 		},
 	};
 
 	// TODO turn into ext method or standalone, make return instead of panic
 	// actually use it as an enum, right? then make extmethod on enum or use matches! or something
-	assert!(data_format == [1, 0]); // PCM
+	// assert!(data_format == [1, 0]); // PCM
 
 	let num_bytes = loop {
 		let mut header = ChunkHeader::zeroed();
