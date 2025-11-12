@@ -1,7 +1,6 @@
-use std::error::Error;
-use std::fmt::{self, Display};
+use core::error::Error;
+use core::fmt;
 use std::io::{self, SeekFrom};
-use std::str::from_utf8;
 
 use bytemuck::{
 	Pod,
@@ -25,18 +24,6 @@ impl ChunkHeader {
 	const DATA_TAG: [u8; 4] = *b"data";
 	const FORMAT_TAG: [u8; 4] = *b"fmt ";
 	const RIFF_TAG: [u8; 4] = *b"RIFF";
-
-	fn is_data(self) -> bool {
-		self.tag == Self::DATA_TAG
-	}
-
-	fn is_format(self) -> bool {
-		self.tag == Self::FORMAT_TAG
-	}
-
-	fn is_riff(self) -> bool {
-		self.tag == Self::RIFF_TAG
-	}
 }
 
 #[non_exhaustive]
@@ -86,7 +73,17 @@ impl FormatSize {
 #[repr(u16)]
 enum DataFormat {
 	Pcm = 0x0001,
-	Extensible = 0xfffe,
+}
+impl DataFormat {
+	const EXTENSIBLE: u16 = 0xfffe;
+	const PCM: u16 = 0x0001;
+
+	const fn new(format: u16) -> Result<Self, FormatSizeConvError> {
+		match format {
+			Self::PCM => Ok(Self::Pcm),
+			_size => todo!(),
+		}
+	}
 }
 
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
@@ -95,7 +92,7 @@ struct RawRiffData {
 	riff_header: ChunkHeader,
 	wave_tag: [u8; 4],
 	format_header: ChunkHeader,
-	data_format: [u8; 2],
+	data_format: u16,
 	num_channels: u16,
 	sample_blocks_per_sec: u32,
 	bytes_per_second: u32,
@@ -106,22 +103,12 @@ impl RawRiffData {
 	const WAVE_TAG: [u8; 4] = *b"WAVE";
 
 	fn is_valid(&self) -> bool {
-		self.riff_header.is_riff() && true
+		// self.riff_header() == RIFF_TAG ...  && true
+		todo!()
 	}
 	// TODO: fn to extract Result<enumized data_format>
 
 	// TODO: fn validate(&self) -> bool or maybe Result<(), Error impl Into io::Error>
-}
-
-#[derive(Clone, Copy, Pod, Zeroable, Debug)]
-#[repr(transparent)]
-struct EmptyExtention(u16);
-impl EmptyExtention {
-	const EXTENTION_SIZE: u16 = 0;
-
-	fn is_valid(self) -> bool {
-		self.0 == Self::EXTENTION_SIZE
-	}
 }
 
 #[non_exhaustive]
@@ -161,7 +148,9 @@ struct WaveExtention {
 }
 impl WaveExtention {
 	const EXTENSION_SIZE: u16 = 22;
-	const TAG: [u8; 14] = *b"\x00\x00\x00\x00\x10\x00\x80\x00\x00\xAA\x00\x38\x9B\x71";
+	const TAG: [u8; 14] = [
+		0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71,
+	];
 
 	fn data_format(&self) -> Result<DataFormat, WaveExtValidError> {
 		if self.extension_size != Self::EXTENSION_SIZE {
@@ -189,6 +178,15 @@ pub struct RiffWavePcm {
 	pub samples_per_second: u32,
 	pub samples: Box<[i16]>,
 }
+impl RiffWavePcm {
+	fn parse_from_data_chunk(
+		source: impl io::Read + io::Seek,
+		samples: usize,
+		channels: usize,
+	) -> io::Result<Self> {
+		todo!()
+	}
+}
 
 pub fn parse(source: impl io::Read + io::Seek) -> io::Result<RiffWavePcm> {
 	/// https://github.com/ascent12/average/blob/master/avg.c
@@ -214,64 +212,74 @@ pub fn parse(source: impl io::Read + io::Seek) -> io::Result<RiffWavePcm> {
 	}
 
 	let mut source = source;
-	// TODO could be uninit instead of zero, bench later to see if it matters
 	let mut riff_data = RawRiffData::zeroed();
 
 	source.read_exact(must_cast_mut::<_, [_; 36]>(&mut riff_data))?;
 
-	if !riff_data.riff_header.is_riff() {
+	if riff_data.riff_header.tag != ChunkHeader::RIFF_TAG {
 		return Err(io::Error::other("chunk header must be \"RIFF\""));
+	}
+
+	if riff_data.format_header.tag != ChunkHeader::FORMAT_TAG {
+		return Err(io::Error::other("format tag must be \"fmt \""));
 	}
 
 	let format_size = FormatSize::new(riff_data.format_header.len).map_err(io::Error::other)?;
 
-	let data_format = match format_size {
+	// TODO: this is in need of abstraction.
+	// options may include some kind of (format size, data format) pair type since they depend on each other a lot
+	match format_size {
 		FormatSize::Size16 => {
-			// riff_data.data_format
-			DataFormat::Pcm
+			if riff_data.data_format != DataFormat::PCM {
+				return Err(io::Error::other("data format must be the PCM data format"));
+			}
 		},
 		FormatSize::Size18 => {
-			let mut ext = EmptyExtention::zeroed();
-			source.read_exact(must_cast_mut::<_, [_; 2]>(&mut ext))?;
-
-			if !ext.is_valid() {
-				return Err(io::Error::other(format!(
-					"incorrect extention length of {}, expected 0",
-					ext.0
-				)));
+			if riff_data.data_format != DataFormat::PCM {
+				return Err(io::Error::other("data format must be the PCM data format"));
 			}
 
-			// riff_data.data_format
-			DataFormat::Pcm
+			let mut ext_size = <[u8; 2]>::zeroed();
+			source.read_exact(&mut ext_size[..])?;
+
+			if ext_size != [0x0, 0x00] {
+				return Err(io::Error::other("extension size is not zero"));
+			}
 		},
 		FormatSize::Size40 => {
+			if riff_data.data_format != DataFormat::EXTENSIBLE {
+				return Err(io::Error::other(
+					"data format must be the extensible data format",
+				));
+			}
+
 			let mut ext = WaveExtention::zeroed();
 			source.read_exact(must_cast_mut::<_, [_; 24]>(&mut ext))?;
-			ext.data_format().map_err(io::Error::other)?
+			if ext.data_format != DataFormat::PCM.to_le_bytes() {
+				if riff_data.data_format != DataFormat::PCM {
+					return Err(io::Error::other("data format must be the PCM data format"));
+				}
+			}
 		},
-	};
+	}
 
-	// TODO turn into ext method or standalone, make return instead of panic
-	// actually use it as an enum, right? then make extmethod on enum or use matches! or something
-	// assert!(data_format == [1, 0]); // PCM
-
+	// fn skip_until_data_chunk(source) -> ChunkHeader
 	let num_bytes = loop {
 		let mut header = ChunkHeader::zeroed();
 		source.read_exact(must_cast_mut::<_, [_; 8]>(&mut header))?;
 
-		if header.is_data() {
+		if header.tag == ChunkHeader::DATA_TAG {
 			break header.len as usize;
 		}
 
 		source.seek(SeekFrom::Current(header.len as i64))?;
 	};
 
+	// TODO: replace with size_of::<Sample>();
 	let num_samples = num_bytes / size_of::<i16>();
 	let num_channels = riff_data.num_channels as usize;
 
 	let num_samples_per_channel = num_samples / num_channels;
-
-	// if block == data, read length, allocate buffer, write to buffer, construct return type struct, exit early.
 
 	let mut buf = zeroed_slice_box::<i16>(num_samples_per_channel);
 
@@ -288,8 +296,8 @@ pub fn parse(source: impl io::Read + io::Seek) -> io::Result<RiffWavePcm> {
 			source.read_exact(must_cast_slice_mut::<_, u8>(temp_samples_buf))?;
 			num_remaining_samples -= num_samples_to_read;
 
-			// TODO this is terrible, fix
-			for (idx, chunk) in temp_samples_buf.chunks_exact(num_channels).enumerate() {
+			// TODO make this zip an iterator of buf[slice..slice].iter_mut() and the chunks_exact
+			for chunk in temp_samples_buf.chunks_exact(num_channels) {
 				buf[index] = avg_perfect(chunk);
 				index += 1;
 			}
