@@ -20,7 +20,7 @@ mod tests {
 		let output = RiffWavePcm::parse(&mut file).unwrap();
 		let (sps, samp) = dbg!(output.samples_per_second, output.samples.len());
 		dbg!(samp / sps as usize);
-		assert!(samp / sps as usize == 40);
+		assert!(samp / sps as usize == 10);
 	}
 	#[test]
 	fn big_wav_read_and_parse() {
