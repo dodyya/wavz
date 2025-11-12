@@ -3,9 +3,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use cpal::{BufferSize, SampleRate, StreamConfig};
-use wavez::parser::{RiffWavePcm, parse};
+use wavez::parser::RiffWavePcm;
 
-const INPUT_FILENAME: &str = "./pure-tone.wav";
+const INPUT_FILENAME: &str = "./chopin.wav";
 
 fn main() {
 	let file = File::open(INPUT_FILENAME).unwrap();
@@ -23,7 +23,7 @@ fn main() {
 
 	println!("using audio device named \"{}\"", device.name().unwrap());
 
-	let RiffWavePcm { samples_per_second, samples } = parse(file).unwrap();
+	let RiffWavePcm { samples_per_second, samples } = RiffWavePcm::parse(file).unwrap();
 
 	let config = StreamConfig {
 		channels: 1,
