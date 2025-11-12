@@ -7,38 +7,26 @@ mod tests {
 	use std::cmp::max;
 	use std::fs::{File, read};
 
-	use super::parser::{parse, parse1};
+	use super::parser::RiffWavePcm;
 	use crate::complex::{Cplx, PI};
 	use crate::fft::{copy_fft, *};
 
 	// TODO: rename/remove irrelevant tests
 
 	#[test]
-	fn test_wav_read() {
-		let file = read("./pure-tone.wav").unwrap();
-		parse1(&*file);
-	}
-
-	#[test]
-	fn test_big_wav_read() {
-		let file = read("./chopin.wav").unwrap();
-		parse1(&*file);
-	}
-
-	#[test]
-	fn wav_read_real_parse() {
+	fn wav_read_and_parse() {
 		let mut file = File::open("./pure-tone.wav").unwrap();
 
-		let output = parse(&mut file).unwrap();
+		let output = RiffWavePcm::parse(&mut file).unwrap();
 		let (sps, samp) = dbg!(output.samples_per_second, output.samples.len());
 		dbg!(samp / sps as usize);
 		assert!(samp / sps as usize == 40);
 	}
 	#[test]
-	fn big_wav_read_real_parse() {
+	fn big_wav_read_and_parse() {
 		let mut file = File::open("./chopin.wav").unwrap();
 
-		let output = parse(&mut file).unwrap();
+		let output = RiffWavePcm::parse(&mut file).unwrap();
 		let (sps, samp) = dbg!(output.samples_per_second, output.samples.len());
 		dbg!(samp / sps as usize, 29 * 60 + 25);
 		assert!(samp / sps as usize == 29 * 60 + 25);
@@ -135,7 +123,7 @@ mod tests {
 	fn integration() {
 		use crate::parser::RiffWavePcm;
 		let file = File::open("pure-tone.wav").unwrap();
-		let RiffWavePcm { samples_per_second, samples } = parse(file).unwrap();
+		let RiffWavePcm { samples_per_second, samples } = RiffWavePcm::parse(file).unwrap();
 		let mut samples = &*Box::leak(samples); // ez borrow checker error fix
 		//calculate biggest power of 2
 		let size = samples.len().next_power_of_two() / 2;
