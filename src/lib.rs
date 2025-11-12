@@ -123,7 +123,7 @@ mod tests {
 	fn integration() {
 		use crate::parser::RiffWavePcm;
 
-		let file = File::open("pure-tone.wav").unwrap();
+		let file = File::open("800hz.wav").unwrap();
 		let RiffWavePcm { samples_per_second, samples } = RiffWavePcm::parse(file).unwrap();
 		let mut samples = &*Box::leak(samples); // ez borrow checker error fix
 		//calculate biggest power of 2
