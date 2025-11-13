@@ -4,8 +4,7 @@ pub mod parser;
 
 #[cfg(test)]
 mod tests {
-	use std::cmp::max;
-	use std::fs::{File, read};
+	use std::fs::File;
 
 	use super::parser::RiffWavePcm;
 	use crate::complex::{Cplx, PI};

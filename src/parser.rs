@@ -2,14 +2,7 @@ use core::error::Error;
 use core::fmt;
 use std::io::{self, SeekFrom};
 
-use bytemuck::{
-	Pod,
-	Zeroable,
-	must_cast_mut,
-	must_cast_ref,
-	must_cast_slice_mut,
-	zeroed_slice_box,
-};
+use bytemuck::{Pod, Zeroable, must_cast_mut, must_cast_slice_mut, zeroed_slice_box};
 
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 #[repr(C)]
@@ -41,7 +34,7 @@ impl fmt::Display for FormatSizeConvError {
 }
 impl fmt::Debug for FormatSizeConvError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		<Self as fmt::Display>::fmt(&self, f)
+		<Self as fmt::Display>::fmt(self, f)
 	}
 }
 impl Error for FormatSizeConvError {}
