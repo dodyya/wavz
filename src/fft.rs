@@ -1,41 +1,12 @@
-use crate::complex::{Cplx, PI};
-
 use fixed::FixedI16;
 use fixed::types::extra::U15;
 
-pub type Fix = FixedI16<U15>;
-// TODO make fft impl not copy data when recursing; a possible solution is to map indices
-// between iterations instead of copying the data each time.
-//
-// Ex: pass a fn(usize)->usize param and use it before indexing into slice,
-// will be |x| 2*x+1 or |x| 2*x depending on recusion. Also transmit length, this
-// might be complicated
-pub fn copy_fft(a: &[Cplx]) -> Vec<Cplx> {
-	let n = a.len();
-	if n <= 1 {
-		return a.to_vec();
-	}
-
-	let principal = Cplx::nth_principal(n);
-	let mut omega = Cplx::new(1f32, 0f32);
-
-	let a_evens: Vec<Cplx> = a.iter().step_by(2).copied().collect();
-	let a_odds: Vec<Cplx> = a.iter().skip(1).step_by(2).copied().collect();
-
-	let y_evens = copy_fft(&a_evens);
-	let y_odds = copy_fft(&a_odds);
-
-	let mut y = vec![Cplx::new(0f32, 0f32); n];
-
-	// no idea what this does
-	for k in 0..n / 2 {
-		y[k] = y_evens[k] + omega * y_odds[k];
-		y[k + n / 2] = y_evens[k] - omega * y_odds[k];
-		omega *= principal;
-	}
-
-	y
+struct Cplx<T> {
+	pub re: T,
+	pub im: T,
 }
+
+pub type Fix = FixedI16<U15>;
 
 // TODO: memoize somehow. Fix a constant num samples and gen sinewave once.
 pub fn generate_sinewave(num_samples: usize) -> Vec<Fix> {
@@ -51,7 +22,7 @@ pub fn generate_sinewave(num_samples: usize) -> Vec<Fix> {
 
 /// Takes in a complex slice as real and imaginary parts, and
 /// performs the FFT in-place. Magic.
-pub fn fft_inplace(fr: &mut Vec<Fix>, fi: &mut Vec<Fix>) {
+pub fn fft_inplace(fr: &mut [Fix], fi: &mut [Fix]) {
 	let n = fr.len();
 	assert!(n.is_power_of_two() && fi.len() == n);
 
@@ -61,23 +32,6 @@ pub fn fft_inplace(fr: &mut Vec<Fix>, fi: &mut Vec<Fix>) {
 	let sinewave: Vec<Fix> = generate_sinewave(num_samples);
 	let log2_num_samples = num_samples.ilog2() as usize;
 
-	let mut tr: Fix; // temporary storage for swapping
-	let mut ti: Fix;
-
-	// let mut i: usize; // indices being combined in Danielson-Lanczos
-	let mut j: usize;
-
-	let mut l: usize; // Length of intermediate FFTs
-	let mut k: isize; // Lookup trig values from sine table
-
-	let mut istep: usize; // Length of the FFT result when you combine
-
-	let mut wr: Fix; // Trigonometric values from lookup table
-	let mut wi: Fix;
-
-	let mut qr: Fix; // Temporary variables used during DL part of algorithm
-	let mut qi: Fix;
-
 	for m in 1..n - 1 as usize {
 		let mr = m.reverse_bits() >> (usize::BITS - bits);
 		if mr > m {
@@ -86,35 +40,36 @@ pub fn fft_inplace(fr: &mut Vec<Fix>, fi: &mut Vec<Fix>) {
 		}
 	}
 
-	l = 1;
-	k = log2_num_samples as isize - 1;
+	let mut temp_len = 1;
+	let mut lookup = log2_num_samples as isize - 1;
 
-	while l < num_samples {
-		istep = l << 1;
-		for m in 0..l {
-			j = m << k;
+	while temp_len < num_samples {
+		let combined_len = temp_len << 1;
+		for m in 0..temp_len {
+			let mut j: usize = m << lookup;
 
-			wr = sinewave[j + num_samples / 4];
-			wi = -sinewave[j];
-			wr >>= 1;
-			wi >>= 1;
+			let w: Cplx<Fix> = Cplx {
+				re: sinewave[j + num_samples / 4] / 2,
+				im: -sinewave[j] / 2,
+			};
 
-			for i in (m..num_samples).step_by(istep) {
-				j = i + l;
+			for i in (m..num_samples).step_by(combined_len) {
+				j = i + temp_len;
 
-				tr = wr * fr[j] - wi * fi[j];
-				ti = wr * fi[j] + wi * fr[j];
+				let t: Cplx<Fix> = Cplx {
+					re: w.re * fr[j] - w.im * fi[j],
+					im: w.re * fi[j] + w.im * fr[j],
+				};
 
-				qr = fr[i] >> 1;
-				qi = fi[i] >> 1;
+				let q = Cplx { re: fr[i] / 2, im: fi[i] / 2 };
 
-				fr[j] = qr - tr;
-				fi[j] = qi - ti;
-				fr[i] = qr + tr;
-				fi[i] = qi + ti;
+				fr[j] = q.re - t.re;
+				fi[j] = q.im - t.im;
+				fr[i] = q.re + t.re;
+				fi[i] = q.im + t.im;
 			}
 		}
-		k -= 1;
-		l = istep;
+		lookup -= 1;
+		temp_len = combined_len;
 	}
 }

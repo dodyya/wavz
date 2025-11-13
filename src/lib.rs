@@ -1,4 +1,3 @@
-pub mod complex;
 pub mod fft;
 pub mod parser;
 
@@ -7,8 +6,7 @@ mod tests {
 	use std::fs::File;
 
 	use super::parser::RiffWavePcm;
-	use crate::complex::{Cplx, PI};
-	use crate::fft::{copy_fft, *};
+	use crate::fft::*;
 
 	// TODO: rename/remove irrelevant tests
 
@@ -31,35 +29,35 @@ mod tests {
 		assert!(samp / sps as usize == 29 * 60 + 25);
 	}
 
-	#[test]
-	fn decompose_cos_sum() {
-		let size = 2048;
+	// #[test]
+	// fn decompose_cos_sum() {
+	// 	let size = 2048;
 
-		let mut cosine = Vec::<Cplx>::with_capacity(size);
+	// 	let mut cosine = Vec::<Cplx>::with_capacity(size);
 
-		let component = |x: f32, freq: f32| (2.0 * PI * freq / size as f32 * x).cos();
+	// 	let component = |x: f32, freq: f32| (2.0 * PI * freq / size as f32 * x).cos();
 
-		let combination = |x: f32| {
-			// Kinda whatever random periodic function
-			component(x, 2.0)
-				+ component(x, 7.0)
-				+ component(x, 9.0)
-				+ component(x, 17.0)
-				+ component(x, 37.0)
-		};
-		for i in 0..size {
-			cosine.push(Cplx::new(combination(i as f32), 0f32));
-		}
+	// 	let combination = |x: f32| {
+	// 		// Kinda whatever random periodic function
+	// 		component(x, 2.0)
+	// 			+ component(x, 7.0)
+	// 			+ component(x, 9.0)
+	// 			+ component(x, 17.0)
+	// 			+ component(x, 37.0)
+	// 	};
+	// 	for i in 0..size {
+	// 		cosine.push(Cplx::new(combination(i as f32), 0f32));
+	// 	}
 
-		let frequencies = copy_fft(&cosine);
-		for j in 0..size / 2 {
-			let r = frequencies[j].re;
-			let i = frequencies[j].im;
-			if r * r + i * i > 0.2 {
-				println!("frequency {j} had magnitude {:.4} ", r * r + i * i);
-			}
-		}
-	}
+	// 	let frequencies = copy_fft(&cosine);
+	// 	for j in 0..size / 2 {
+	// 		let r = frequencies[j].re;
+	// 		let i = frequencies[j].im;
+	// 		if r * r + i * i > 0.2 {
+	// 			println!("frequency {j} had magnitude {:.4} ", r * r + i * i);
+	// 		}
+	// 	}
+	// }
 
 	#[test]
 	fn test_sine_gen() {
@@ -83,7 +81,8 @@ mod tests {
 		let mut re = Vec::<Fix>::with_capacity(size);
 		let mut im = Vec::<Fix>::with_capacity(size);
 
-		let component = |x: f32, freq: f32| (2.0 * PI * freq / size as f32 * x).cos();
+		let component =
+			|x: f32, freq: f32| (2.0 * std::f32::consts::PI * freq / size as f32 * x).cos();
 
 		let combination = |x: f32| {
 			// Kinda whatever random periodic function
