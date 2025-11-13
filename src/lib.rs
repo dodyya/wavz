@@ -123,22 +123,22 @@ mod tests {
 		use crate::parser::RiffWavePcm;
 
 		let file = File::open("800hz.wav").unwrap();
-		let RiffWavePcm { samples_per_second, samples } = RiffWavePcm::parse(file).unwrap();
-		let mut samples = &*Box::leak(samples); // ez borrow checker error fix
-		//calculate biggest power of 2
-		let size = samples.len().next_power_of_two() / 2;
-		println!("{}", size);
-		let mut re: Vec<Fix> = Vec::with_capacity(size);
-		let mut im: Vec<Fix> = Vec::with_capacity(size);
+		let RiffWavePcm { samples, .. } = RiffWavePcm::parse(file).unwrap();
+		let samples = &*Box::leak(samples); // ez borrow checker error fix
+		let largest_pow_of_2 = samples.len().next_power_of_two() / 2;
+		let samples = &samples[..largest_pow_of_2];
+		println!("{}", samples.len());
+		let mut re: Vec<Fix> = Vec::with_capacity(samples.len());
+		let mut im: Vec<Fix> = Vec::with_capacity(samples.len());
 
-		for i in 0..size {
-			re.push(Fix::from_bits(samples[i]));
+		for &sample in samples {
+			re.push(Fix::from_bits(sample));
 			im.push(Fix::ZERO);
 		}
 
 		fft_inplace(&mut re, &mut im);
 		let mut max_index: usize = 0;
-		for j in 0..size / 2 {
+		for j in 0..samples.len() / 2 {
 			let r = re[j];
 			let i = im[j];
 			if r * r + i * i > re[max_index] * re[max_index] + im[max_index] * im[max_index] {

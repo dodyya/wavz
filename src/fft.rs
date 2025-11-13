@@ -26,13 +26,13 @@ pub fn fft_inplace(fr: &mut [Fix], fi: &mut [Fix]) {
 	let n = fr.len();
 	assert!(n.is_power_of_two() && fi.len() == n);
 
-	let bits = n.ilog2() as u32;
+	let bits = n.ilog2();
 
 	let num_samples: usize = fr.len();
 	let sinewave: Vec<Fix> = generate_sinewave(num_samples);
 	let log2_num_samples = num_samples.ilog2() as usize;
 
-	for m in 1..n - 1 as usize {
+	for m in 1..n - 1 {
 		let mr = m.reverse_bits() >> (usize::BITS - bits);
 		if mr > m {
 			fr.swap(m, mr);
