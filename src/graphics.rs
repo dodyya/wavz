@@ -12,7 +12,7 @@ use winit_input_helper::WinitInputHelper;
 use crate::fft::Fix;
 
 const Y_PIXEL_SCALE: u32 = 4;
-const X_PIXEL_SCALE: u32 = 2;
+const X_PIXEL_SCALE: u32 = 4;
 
 fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
 	let c = v * s;
@@ -37,7 +37,7 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
 pub fn draw_fft(ffts: &[Vec<Fix>]) {
 	let event_loop = EventLoop::new().unwrap();
 	let mut input = WinitInputHelper::new();
-	let width = ffts.len() as u32;
+	let width = ffts.len() as u32 / 2;
 	let height = ffts[0].len() as u32;
 	let window = {
 		let size = PhysicalSize::new(
@@ -84,7 +84,8 @@ pub fn draw_fft(ffts: &[Vec<Fix>]) {
 				})
 				.collect::<Vec<_>>();
 			fn activation(x: f32) -> f32 {
-				x.sqrt()
+				// x.sqrt()
+				5f32 * x
 			}
 
 			for (x, freqs) in spectrum.iter().enumerate() {
@@ -95,7 +96,7 @@ pub fn draw_fft(ffts: &[Vec<Fix>]) {
 					let norm = activation(value / (ma - mi));
 					let (r, g, b) = hsv_to_rgb(norm * 360f32, 1.0, 1.0);
 
-					if norm > 0.1 {
+					if norm > 0.05 {
 						frame[start] = r as u8;
 						frame[start + 1] = g as u8;
 						frame[start + 2] = b as u8;

@@ -14,7 +14,7 @@ fn main() {
 	// use crate::graphics::draw_fft;
 	let file = File::open("ringtone.wav").unwrap();
 	let RiffWavePcm { samples, .. } = RiffWavePcm::parse(file).unwrap();
-	let ffts = sliding_fft(&samples[..1 << 15], 1 << 11, 1 << 5);
+	let ffts = sliding_fft(&samples, 1 << 12, 1 << 8);
 	println!("we made {} ffts", ffts.len());
 	println!("each fft has {} frequency samples", ffts[0].len());
 

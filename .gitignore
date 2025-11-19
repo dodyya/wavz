@@ -25,4 +25,4 @@ target
 
 /target
 Cargo.lock
-*.wav
+chopin.wav
