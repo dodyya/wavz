@@ -3,14 +3,23 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use cpal::{BufferSize, SampleRate, StreamConfig};
-use wavez::graphics::smain;
+use pixels::wgpu::core::resource::ResourceInfo;
+use wavez::fft::sliding_fft;
+use wavez::graphics::draw_fft;
 use wavez::parser::RiffWavePcm;
 
 const INPUT_FILENAME: &str = "./chopin.wav";
 
 fn main() {
-	smain();
-	// let file = File::open(INPUT_FILENAME).unwrap();
+	// use crate::graphics::draw_fft;
+	let file = File::open("ringtone.wav").unwrap();
+	let RiffWavePcm { samples, .. } = RiffWavePcm::parse(file).unwrap();
+	let ffts = sliding_fft(&samples[..1 << 15], 1 << 11, 1 << 5);
+	println!("we made {} ffts", ffts.len());
+	println!("each fft has {} frequency samples", ffts[0].len());
+
+	draw_fft(&ffts);
+	// smain();
 
 	// let host = cpal::default_host();
 

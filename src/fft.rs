@@ -6,16 +6,14 @@ struct Cplx<T> {
 	pub im: T,
 }
 
-pub type Fix = FixedI16<U15>;
+// pub type Fix = FixedI16<U15>;
+pub type Fix = f32;
 
 // TODO: memoize somehow. Fix a constant num samples and gen sinewave once.
 pub fn generate_sinewave(num_samples: usize) -> Vec<Fix> {
 	let mut sinewave = Vec::with_capacity(num_samples);
 	for i in 0..num_samples {
-		sinewave.push(Fix::from_bits(
-			(((i as f32 * std::f32::consts::TAU / num_samples as f32).sin()) * i16::MAX as f32)
-				as i16,
-		));
+		sinewave.push(((i as f32 * std::f32::consts::TAU / num_samples as f32).sin()) as f32);
 	}
 	sinewave
 }
@@ -44,13 +42,13 @@ pub fn fft_inplace(fr: &mut [Fix], fi: &mut [Fix]) {
 	let mut lookup = log2_num_samples as isize - 1;
 
 	while temp_len < num_samples {
-		let combined_len = temp_len << 1;
+		let combined_len = temp_len * 2;
 		for m in 0..temp_len {
 			let mut j: usize = m << lookup;
 
 			let w: Cplx<Fix> = Cplx {
-				re: sinewave[j + num_samples / 4] / 2,
-				im: -sinewave[j] / 2,
+				re: sinewave[j + num_samples / 4] / 2 as Fix,
+				im: -sinewave[j] / 2 as Fix,
 			};
 
 			for i in (m..num_samples).step_by(combined_len) {
@@ -61,7 +59,10 @@ pub fn fft_inplace(fr: &mut [Fix], fi: &mut [Fix]) {
 					im: w.re * fi[j] + w.im * fr[j],
 				};
 
-				let q = Cplx { re: fr[i] / 2, im: fi[i] / 2 };
+				let q = Cplx {
+					re: fr[i] / 2 as Fix,
+					im: fi[i] / 2 as Fix,
+				};
 
 				fr[j] = q.re - t.re;
 				fi[j] = q.im - t.im;
@@ -72,4 +73,27 @@ pub fn fft_inplace(fr: &mut [Fix], fi: &mut [Fix]) {
 		lookup -= 1;
 		temp_len = combined_len;
 	}
+}
+
+pub fn sliding_fft(samples: &[i16], window_size: usize, step_size: usize) -> Vec<Vec<Fix>> {
+	let mut ffts = Vec::new();
+	let mut start = 0;
+
+	while start + window_size <= samples.len() {
+		let mut fr = Vec::with_capacity(window_size);
+		let mut fi = Vec::with_capacity(window_size);
+
+		for &sample in &samples[start..start + window_size] {
+			fr.push(sample as Fix);
+			fi.push(Fix::from_bits(0));
+		}
+
+		fft_inplace(&mut fr, &mut fi);
+		ffts.push(fr[..window_size / 32].to_vec());
+		ffts.push(fi[..window_size / 32].to_vec());
+
+		start += step_size;
+	}
+
+	ffts
 }

@@ -157,5 +157,20 @@ mod tests {
 		// we have sample rate f_s = 44.1kHz. FFT size 262144. Then our bin spacing is 44100/262144
 		// = 0.1682281494 Hz. Multiply that spacing by 4755 to get 799.9999....
 		// Yayy!
+		//
+		// Regardless of our choice of sampling size, the range of frequencies we detect is the same. We just get more precision.
+		// Takeaway: guess what sample size is reasonable.
+		//
+	}
+
+	#[test]
+	fn chopin_takes_ages() {
+		use crate::graphics::draw_fft;
+		let file = File::open("chopin.wav").unwrap();
+		let RiffWavePcm { samples, .. } = RiffWavePcm::parse(file).unwrap();
+		let ffts = sliding_fft(&samples[..1 << 24], 1 << 12, 1 << 8);
+		println!("fft size {}", ffts.len());
+		println!("each fft has {} frequency samples", ffts[0].len());
+		draw_fft(&ffts);
 	}
 }
