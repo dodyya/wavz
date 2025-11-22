@@ -15,6 +15,7 @@ const MAX_WIDTH: usize = 1500;
 const BYTES_PER_PIXEL: usize = 4;
 const INERTIA_RATIO: f32 = 1f32 / 6f32;
 
+#[inline]
 fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
 	let c = v * s;
 	let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
@@ -35,8 +36,14 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
 	);
 }
 
+#[inline]
 fn rgb_from_hue(h: f32) -> (u8, u8, u8) {
 	hsv_to_rgb(360f32 * h, 1.0, 1.0)
+}
+
+#[inline]
+fn apply_inertia(inertia: f32, delta: f32) -> f32 {
+	(1f32 - INERTIA_RATIO) * inertia + INERTIA_RATIO * delta
 }
 
 pub(crate) fn draw_spectra(spectra: &Vec<Vec<Float>>, ffts_per_second: u32) {
@@ -84,7 +91,7 @@ fn show_spectrogram(width: usize, height: usize, image: Vec<u8>, ffts_per_second
 	let pixel_width = if scrollable { MAX_WIDTH as f64 } else { width as f64 };
 	dbg!(pixel_width);
 	let mut x_offset: usize = 0;
-	let mut scroll_inertia: f32 = 0.0;
+	let mut scroll_v: f32 = 0.0;
 	let mut play: bool = false;
 
 	let window = {
@@ -147,8 +154,7 @@ fn show_spectrogram(width: usize, height: usize, image: Vec<u8>, ffts_per_second
 				return;
 			}
 
-			let scroll =
-				(1.0 - INERTIA_RATIO) * scroll_inertia + INERTIA_RATIO * input.scroll_diff().1;
+			let scroll = apply_inertia(scroll_v, input.scroll_diff().1);
 			match scroll {
 				(0.0..) => {
 					let new_pos = x_offset as isize + scroll as isize;
@@ -164,7 +170,7 @@ fn show_spectrogram(width: usize, height: usize, image: Vec<u8>, ffts_per_second
 				},
 				_ => {},
 			}
-			scroll_inertia = (1.0 - INERTIA_RATIO) * scroll_inertia + INERTIA_RATIO * scroll;
+			scroll_v = apply_inertia(scroll_v, scroll);
 
 			if input.key_pressed(KeyCode::Space) {
 				play = !play;
