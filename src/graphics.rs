@@ -13,7 +13,9 @@ use crate::fft::Float;
 const PIXEL_SCALE: u32 = 2;
 const MAX_WIDTH: usize = 1500;
 const BYTES_PER_PIXEL: usize = 4;
-const INERTIA_RATIO: f32 = 1f32 / 6f32;
+const INERTIA_RATIO: f32 = 5f32 / 6f32;
+const CUTOFF: f32 = 0.05;
+const CLAMP_FACTOR: f32 = 1.0;
 
 #[inline]
 fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
@@ -43,39 +45,41 @@ fn rgb_from_hue(h: f32) -> (u8, u8, u8) {
 
 #[inline]
 fn apply_inertia(inertia: f32, delta: f32) -> f32 {
-	(1f32 - INERTIA_RATIO) * inertia + INERTIA_RATIO * delta
+	(INERTIA_RATIO) * inertia + (1f32 - INERTIA_RATIO) * delta
 }
 
-pub(crate) fn draw_spectra(spectra: &Vec<Vec<Float>>, ffts_per_second: u32) {
+#[inline]
+///Did this because f32 doesn't implement Ord, so can't just use .max()/.min()
+/// TODO: figure out if theres an easier way
+fn extrema<'a>(v: impl Iterator<Item = &'a f32>) -> (f32, f32) {
+	v.fold((f32::MAX, f32::MIN), |(curr_min, curr_max), &x| {
+		(curr_min.min(x), curr_max.max(x))
+	})
+}
+
+pub(crate) fn generate_spectrogram(spectra: &mut Vec<Vec<Float>>, ffts_per_second: u32) {
 	let width = spectra.len();
-	let height = spectra.first().unwrap().len();
+	let height = spectra[0].len();
 
 	let mut img = vec![0u8; width * height * 4];
-	img.chunks_exact_mut(4).for_each(|chunk| {
-		chunk[0] = 0;
-		chunk[1] = 0;
-		chunk[2] = 0;
-		chunk[3] = 255;
-	});
+	img.chunks_exact_mut(4)
+		.for_each(|chunk| chunk.copy_from_slice(&[0, 0, 0, 255]));
 
-	#[inline]
-	fn activation(x: f32) -> f32 {
-		5f32 * x
-	}
-
-	for (x, spectrum) in spectra.iter().enumerate() {
-		let mi = spectrum.iter().fold(f32::MAX, |acc, &x| acc.min(x));
-		let ma = spectrum.iter().fold(f32::MIN, |acc, &x| acc.max(x));
+	for (x, spectrum) in spectra.into_iter().enumerate() {
+		fn gain(x: &f32) -> f32 {
+			// x.powi(2)
+			*x
+		}
+		spectrum.iter_mut().for_each(|x| *x = gain(x));
+		let (mi, ma) = extrema(spectrum.iter());
+		let range = CLAMP_FACTOR * (ma - mi);
 		for (y, &value) in spectrum.iter().enumerate() {
 			let start = (x as usize + y as usize * width as usize) * 4;
-			let normed_hue = activation(value / (ma - mi));
+			let normed_hue = ((value - mi) / range).clamp(0.0, 1.0);
 			let (r, g, b) = rgb_from_hue(normed_hue);
 
-			if normed_hue > 0.05 {
-				img[start] = r as u8;
-				img[start + 1] = g as u8;
-				img[start + 2] = b as u8;
-				img[start + 3] = 255;
+			if normed_hue > CUTOFF {
+				img[start..start + 3].copy_from_slice(&[r, g, b]);
 			}
 		}
 	}

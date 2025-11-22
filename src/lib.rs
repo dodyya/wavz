@@ -146,15 +146,15 @@ mod tests {
 }
 
 pub mod lib {
-	use crate::{Path, fft::*, graphics::draw_spectra, parser::RiffWavePcm};
+	use crate::{Path, fft::*, graphics::generate_spectrogram, parser::RiffWavePcm};
 	use std::fs::File;
 
 	pub fn run_demo(path: impl AsRef<Path>) {
 		let file = File::open(path).unwrap();
 		let step_size = 1 << 8;
 		let RiffWavePcm { samples, samples_per_second } = RiffWavePcm::parse(file).unwrap();
-		let spectra = sliding_spectra(&samples, step_size);
-		draw_spectra(&spectra, ffts_per_second(samples_per_second, step_size));
+		let mut spectra = sliding_spectra(&samples, step_size);
+		generate_spectrogram(&mut spectra, ffts_per_second(samples_per_second, step_size));
 	}
 }
 
