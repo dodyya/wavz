@@ -1,18 +1,19 @@
 #![forbid(unsafe_code)]
 
-use pixels::{Error, Pixels, SurfaceTexture};
-use winit::dpi::{LogicalSize, PhysicalSize};
+use pixels::{Pixels, SurfaceTexture};
+use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::KeyCode;
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-use crate::fft::{Cplx, Float};
+use crate::fft::Float;
 
 const PIXEL_SCALE: u32 = 2;
 const MAX_WIDTH: usize = 1500;
 const BYTES_PER_PIXEL: usize = 4;
+const INERTIA_RATIO: f32 = 1f32 / 6f32;
 
 fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
 	let c = v * s;
@@ -50,6 +51,7 @@ pub(crate) fn draw_spectra(spectra: &Vec<Vec<Float>>, ffts_per_second: u32) {
 		chunk[3] = 255;
 	});
 
+	#[inline]
 	fn activation(x: f32) -> f32 {
 		5f32 * x
 	}
@@ -71,10 +73,10 @@ pub(crate) fn draw_spectra(spectra: &Vec<Vec<Float>>, ffts_per_second: u32) {
 		}
 	}
 
-	display_static(width, height, img, ffts_per_second);
+	show_spectrogram(width, height, img, ffts_per_second);
 }
 
-fn display_static(width: usize, height: usize, image: Vec<u8>, ffts_per_second: u32) {
+fn show_spectrogram(width: usize, height: usize, image: Vec<u8>, ffts_per_second: u32) {
 	let event_loop = EventLoop::new().unwrap();
 	let mut input = WinitInputHelper::new();
 	let scrollable: bool = width > MAX_WIDTH;
@@ -82,6 +84,7 @@ fn display_static(width: usize, height: usize, image: Vec<u8>, ffts_per_second: 
 	let pixel_width = if scrollable { MAX_WIDTH as f64 } else { width as f64 };
 	dbg!(pixel_width);
 	let mut x_offset: usize = 0;
+	let mut scroll_inertia: f32 = 0.0;
 	let mut play: bool = false;
 
 	let window = {
@@ -93,6 +96,7 @@ fn display_static(width: usize, height: usize, image: Vec<u8>, ffts_per_second: 
 			.with_title("")
 			.with_inner_size(size)
 			.with_min_inner_size(size)
+			.with_resizable(false)
 			.build(&event_loop)
 			.unwrap()
 	};
@@ -103,7 +107,6 @@ fn display_static(width: usize, height: usize, image: Vec<u8>, ffts_per_second: 
 		Pixels::new(pixel_width as u32, height as u32, surface_texture).unwrap()
 	};
 
-	let fft_period = 1f64 / ffts_per_second as f64;
 	let _ = event_loop.run(|event, elwt| {
 		if let Event::WindowEvent {
 			event: WindowEvent::RedrawRequested,
@@ -128,46 +131,48 @@ fn display_static(width: usize, height: usize, image: Vec<u8>, ffts_per_second: 
 			if play {
 				x_offset += 3;
 			}
-			if let Err(err) = pixels.render() {
+			if let Err(_) = pixels.render() {
 				elwt.exit();
 				return;
 			}
 		}
 
 		if input.update(&event) {
-			if scrollable {
-				let x_scroll = -input.scroll_diff().0;
-				if x_scroll > 0.0 {
-					let new_pos = x_offset + x_scroll as usize;
-					if new_pos < width - pixel_width as usize {
-						x_offset = new_pos;
-					}
-				} else if x_scroll < 0.0 {
-					let new_pos = x_offset as f64 - (-x_scroll as f64);
-					if new_pos > 0.0 {
-						x_offset = new_pos as usize;
-					}
-				}
-			}
-
 			if input.key_pressed(KeyCode::KeyQ) || input.close_requested() {
 				elwt.exit();
 				return;
 			}
 
+			if !scrollable {
+				return;
+			}
+
+			let scroll =
+				(1.0 - INERTIA_RATIO) * scroll_inertia + INERTIA_RATIO * input.scroll_diff().1;
+			match scroll {
+				(0.0..) => {
+					let new_pos = x_offset as isize + scroll as isize;
+					if new_pos < width as isize - pixel_width as isize {
+						x_offset = new_pos as usize;
+					}
+				},
+				(..0.0) => {
+					let new_pos = x_offset as isize + scroll as isize;
+					if new_pos > 0 {
+						x_offset = new_pos as usize;
+					}
+				},
+				_ => {},
+			}
+			scroll_inertia = (1.0 - INERTIA_RATIO) * scroll_inertia + INERTIA_RATIO * scroll;
+
 			if input.key_pressed(KeyCode::Space) {
 				play = !play;
 			}
 
-			if let Some(size) = input.window_resized() {
-				if let Err(err) = pixels.resize_surface(size.width, size.height) {
-					elwt.exit();
-					return;
-				}
-			}
-
+			let fft_period = 1f64 / ffts_per_second as f64;
 			window.set_title(&format!(
-				"Viewing {}:{} of {}, corresponds to {}s to {}s",
+				"Viewing {}:{} of {}, corresponds to {:.3}s to {:.3}s",
 				x_offset,
 				x_offset + pixel_width as usize,
 				width,
