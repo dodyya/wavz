@@ -1,36 +1,54 @@
-use fixed::FixedI16;
-use fixed::types::extra::U15;
+use std::sync::LazyLock;
+pub(crate) const RESOLUTION: usize = 1 << 12;
 
-struct Cplx<T> {
+pub(crate) struct Cplx<T> {
 	pub re: T,
 	pub im: T,
 }
 
 // pub type Fix = FixedI16<U15>;
-pub type Fix = f32;
+pub type Float = f32;
 
-// TODO: memoize somehow. Fix a constant num samples and gen sinewave once.
-pub fn generate_sinewave(num_samples: usize) -> Vec<Fix> {
-	let mut sinewave = Vec::with_capacity(num_samples);
-	for i in 0..num_samples {
-		sinewave.push(((i as f32 * std::f32::consts::TAU / num_samples as f32).sin()) as f32);
+pub(crate) static SINE: LazyLock<Vec<Float>> = LazyLock::new(|| {
+	let mut v = Vec::with_capacity(RESOLUTION);
+	for i in 0..RESOLUTION {
+		v.push((i as Float * std::f32::consts::TAU / RESOLUTION as Float).sin());
 	}
-	sinewave
+	v
+});
+
+/// Takes an fft result and returns the magnitude vector of the Nyquist range
+pub(crate) fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
+	assert_eq!(RESOLUTION, fr.len());
+	assert!(RESOLUTION.is_power_of_two() && fi.len() == RESOLUTION);
+
+	let mut v = Vec::with_capacity(RESOLUTION / 2);
+	for i in 0..RESOLUTION / 2 {
+		v.push((fr[i] * fr[i] + fi[i] * fi[i]).sqrt());
+	}
+	v
+}
+
+pub(crate) fn hz_to_fft_index(hz: f32, samples_per_second: u32) -> usize {
+	(hz * RESOLUTION as f32 / (samples_per_second as f32)).round() as usize
+}
+
+pub(crate) fn ffts_per_second(samples_per_second: u32, step_size: usize) -> u32 {
+	samples_per_second / step_size as u32
 }
 
 /// Takes in a complex slice as real and imaginary parts, and
 /// performs the FFT in-place. Magic.
-pub fn fft_inplace(fr: &mut [Fix], fi: &mut [Fix]) {
-	let n = fr.len();
-	assert!(n.is_power_of_two() && fi.len() == n);
+pub(crate) fn fft_inplace(fr: &mut [Float], fi: &mut [Float]) {
+	assert_eq!(RESOLUTION, fr.len());
+	assert!(RESOLUTION.is_power_of_two() && fi.len() == RESOLUTION);
 
-	let bits = n.ilog2();
+	let bits = RESOLUTION.ilog2();
 
 	let num_samples: usize = fr.len();
-	let sinewave: Vec<Fix> = generate_sinewave(num_samples);
 	let log2_num_samples = num_samples.ilog2() as usize;
 
-	for m in 1..n - 1 {
+	for m in 1..RESOLUTION - 1 {
 		let mr = m.reverse_bits() >> (usize::BITS - bits);
 		if mr > m {
 			fr.swap(m, mr);
@@ -46,22 +64,22 @@ pub fn fft_inplace(fr: &mut [Fix], fi: &mut [Fix]) {
 		for m in 0..temp_len {
 			let mut j: usize = m << lookup;
 
-			let w: Cplx<Fix> = Cplx {
-				re: sinewave[j + num_samples / 4] / 2 as Fix,
-				im: -sinewave[j] / 2 as Fix,
+			let w: Cplx<Float> = Cplx {
+				re: SINE[j + num_samples / 4] / 2 as Float,
+				im: -SINE[j] / 2 as Float,
 			};
 
 			for i in (m..num_samples).step_by(combined_len) {
 				j = i + temp_len;
 
-				let t: Cplx<Fix> = Cplx {
+				let t: Cplx<Float> = Cplx {
 					re: w.re * fr[j] - w.im * fi[j],
 					im: w.re * fi[j] + w.im * fr[j],
 				};
 
 				let q = Cplx {
-					re: fr[i] / 2 as Fix,
-					im: fi[i] / 2 as Fix,
+					re: fr[i] / 2 as Float,
+					im: fi[i] / 2 as Float,
 				};
 
 				fr[j] = q.re - t.re;
@@ -75,22 +93,21 @@ pub fn fft_inplace(fr: &mut [Fix], fi: &mut [Fix]) {
 	}
 }
 
-pub fn sliding_fft(samples: &[i16], window_size: usize, step_size: usize) -> Vec<Vec<Fix>> {
+pub(crate) fn sliding_spectra(samples: &[i16], step_size: usize) -> Vec<Vec<Float>> {
 	let mut ffts = Vec::new();
 	let mut start = 0;
 
-	while start + window_size <= samples.len() {
-		let mut fr = Vec::with_capacity(window_size);
-		let mut fi = Vec::with_capacity(window_size);
+	while start + RESOLUTION <= samples.len() {
+		let mut fr = Vec::with_capacity(RESOLUTION);
+		let mut fi = Vec::with_capacity(RESOLUTION);
 
-		for &sample in &samples[start..start + window_size] {
-			fr.push(sample as Fix);
-			fi.push(Fix::from_bits(0));
+		for &sample in &samples[start..start + RESOLUTION] {
+			fr.push(sample as Float);
+			fi.push(0 as Float);
 		}
 
 		fft_inplace(&mut fr, &mut fi);
-		ffts.push(fr[..window_size / 32].to_vec());
-		ffts.push(fi[..window_size / 32].to_vec());
+		ffts.push(spectrum(&fr, &fi));
 
 		start += step_size;
 	}

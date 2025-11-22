@@ -4,21 +4,26 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use cpal::{BufferSize, SampleRate, StreamConfig};
 use pixels::wgpu::core::resource::ResourceInfo;
-use wavez::fft::sliding_fft;
-use wavez::graphics::draw_fft;
+// use wavez::fft::sliding_fft;
+// use wavez::graphics::draw_fft;
+use wavez::lib::run_demo;
 use wavez::parser::RiffWavePcm;
 
-const INPUT_FILENAME: &str = "./chopin.wav";
-
 fn main() {
-	// use crate::graphics::draw_fft;
-	let file = File::open("ringtone.wav").unwrap();
-	let RiffWavePcm { samples, .. } = RiffWavePcm::parse(file).unwrap();
-	let ffts = sliding_fft(&samples, 1 << 12, 1 << 8);
-	println!("we made {} ffts", ffts.len());
-	println!("each fft has {} frequency samples", ffts[0].len());
+	run_demo("./test_files/ode.wav");
 
-	draw_fft(&ffts);
+	// println!("we made {} ffts", ffts.len());
+	// println!("each fft has {} frequency samples", ffts[0].re.len());
+	// println!(
+	// 	"The length of the song is {} seconds",
+	// 	samples.len() as f64 / samples_per_second as f64
+	// );
+	// let fft_period = samples.len() as f64 / samples_per_second as f64 / ffts.len() as f64;
+	// println!(
+	// 	"Each fft corresponds to {} seconds",
+	// 	samples.len() as f64 / 44100.0 / ffts.len() as f64
+	// );
+	// draw_fft(&ffts, fft_period);
 	// smain();
 
 	// let host = cpal::default_host();

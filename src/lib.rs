@@ -1,3 +1,5 @@
+use std::path::Path;
+
 pub mod fft;
 pub mod graphics;
 pub mod parser;
@@ -13,16 +15,17 @@ mod tests {
 
 	#[test]
 	fn wav_read_and_parse() {
-		let mut file = File::open("./pure-tone.wav").unwrap();
+		let mut file = File::open("./test_files/pure-tone.wav").unwrap();
 
 		let output = RiffWavePcm::parse(&mut file).unwrap();
 		let (sps, samp) = dbg!(output.samples_per_second, output.samples.len());
 		dbg!(samp / sps as usize);
 		assert!(samp / sps as usize == 10);
 	}
+
 	#[test]
 	fn big_wav_read_and_parse() {
-		let mut file = File::open("./chopin.wav").unwrap();
+		let mut file = File::open("./test_files/chopin.wav").unwrap();
 
 		let output = RiffWavePcm::parse(&mut file).unwrap();
 		let (sps, samp) = dbg!(output.samples_per_second, output.samples.len());
@@ -30,57 +33,23 @@ mod tests {
 		assert!(samp / sps as usize == 29 * 60 + 25);
 	}
 
-	// #[test]
-	// fn decompose_cos_sum() {
-	// 	let size = 2048;
-
-	// 	let mut cosine = Vec::<Cplx>::with_capacity(size);
-
-	// 	let component = |x: f32, freq: f32| (2.0 * PI * freq / size as f32 * x).cos();
-
-	// 	let combination = |x: f32| {
-	// 		// Kinda whatever random periodic function
-	// 		component(x, 2.0)
-	// 			+ component(x, 7.0)
-	// 			+ component(x, 9.0)
-	// 			+ component(x, 17.0)
-	// 			+ component(x, 37.0)
-	// 	};
-	// 	for i in 0..size {
-	// 		cosine.push(Cplx::new(combination(i as f32), 0f32));
-	// 	}
-
-	// 	let frequencies = copy_fft(&cosine);
-	// 	for j in 0..size / 2 {
-	// 		let r = frequencies[j].re;
-	// 		let i = frequencies[j].im;
-	// 		if r * r + i * i > 0.2 {
-	// 			println!("frequency {j} had magnitude {:.4} ", r * r + i * i);
-	// 		}
-	// 	}
-	// }
-
 	#[test]
-	fn test_sine_gen() {
-		let sine4 = generate_sinewave(4);
-		assert!(sine4[0].abs() < 0.0001);
-		assert!(sine4[2].abs() < 0.0001);
-		assert!((sine4[1] - Fix::MAX).abs() < 0.0001);
-		assert!((sine4[3] - Fix::MIN).abs() < 0.0001);
-
-		let sine32 = generate_sinewave(32);
-		dbg!(sine32); //visually inspect for resembling sine.
+	fn sine_gen() {
+		use crate::fft::RESOLUTION;
+		use crate::fft::SINE;
+		assert!(SINE.len() == RESOLUTION);
+		assert!(SINE[0] < 1e-10);
+		assert!((SINE[RESOLUTION / 4] - 1.0).abs() < 1e-10);
+		assert!(SINE[RESOLUTION / 2] < 1e-10);
+		assert!((SINE[3 * RESOLUTION / 4] + 1.0).abs() < 1e-10);
+		assert!(SINE[RESOLUTION - 1] < 1e-10);
 	}
 
 	#[test]
-	// NOTE: See how the inplace, i16 fixed point
-	// version does not compute the frequencies as accurately as the copy version.
-	// (In the sense that their relative magnitudes aren't the same)
-	// This is because the inplace version has literally half of the bits.
-	fn decompose_cos_sum_inplace() {
-		let size = 1 << 11;
-		let mut re = Vec::<Fix>::with_capacity(size);
-		let mut im = Vec::<Fix>::with_capacity(size);
+	fn synthetic_decompose() {
+		let size = RESOLUTION;
+		let mut re = Vec::<Float>::with_capacity(size);
+		let mut im = Vec::<Float>::with_capacity(size);
 
 		let component =
 			|x: f32, freq: f32| (2.0 * std::f32::consts::PI * freq / size as f32 * x).cos();
@@ -94,10 +63,8 @@ mod tests {
 				+ component(x, 37.0)
 		};
 		for i in 0..size {
-			re.push(Fix::from_bits(
-				(combination(i as f32) * i16::MAX as f32 / 2.0) as i16,
-			));
-			im.push(Fix::ZERO);
+			re.push(combination(i as Float));
+			im.push(0 as Float);
 		}
 
 		fft_inplace(&mut re, &mut im);
@@ -111,29 +78,20 @@ mod tests {
 	}
 
 	#[test]
-	fn test_fixed_point() {
-		assert_eq!(Fix::MIN.to_bits(), i16::MIN);
-		assert_eq!(Fix::MAX.to_bits(), i16::MAX);
-		assert_eq!(Fix::from_bits(0), Fix::ZERO);
-		// Takeaway: use .from_bits(i16) to turn any i16 with an "equivalent" float in [-1, 1)
-	}
-
-	#[test]
-	fn integration() {
+	fn tone_from_file() {
 		use crate::parser::RiffWavePcm;
 
-		let file = File::open("800hz.wav").unwrap();
-		let RiffWavePcm { samples, .. } = RiffWavePcm::parse(file).unwrap();
-		let samples = &*Box::leak(samples); // ez borrow checker error fix
-		let largest_pow_of_2 = samples.len().next_power_of_two() / 2;
-		let samples = &samples[..largest_pow_of_2];
+		let file = File::open("./test_files/800hz.wav").unwrap();
+		let RiffWavePcm { samples, samples_per_second } = RiffWavePcm::parse(file).unwrap();
+		let samples = &*Box::leak(samples);
+		let samples = &samples[..RESOLUTION];
 		println!("{}", samples.len());
-		let mut re: Vec<Fix> = Vec::with_capacity(samples.len());
-		let mut im: Vec<Fix> = Vec::with_capacity(samples.len());
+		let mut re: Vec<Float> = Vec::with_capacity(samples.len());
+		let mut im: Vec<Float> = Vec::with_capacity(samples.len());
 
 		for &sample in samples {
-			re.push(Fix::from_bits(sample));
-			im.push(Fix::ZERO);
+			re.push(sample as Float);
+			im.push(0 as Float);
 		}
 
 		fft_inplace(&mut re, &mut im);
@@ -149,28 +107,53 @@ mod tests {
 			}
 		}
 
-		assert!(max_index == 4755);
-
-		// quick math: 262144 samples, audio is 800hz. 44.1k samples per second. Then,
-		// each bin corresponds to a sinusoidal which has a frequency of the bin
-		// index measured in units of cycles per frame. 4755 cycles/frame.
-		// we have sample rate f_s = 44.1kHz. FFT size 262144. Then our bin spacing is 44100/262144
-		// = 0.1682281494 Hz. Multiply that spacing by 4755 to get 799.9999....
-		// Yayy!
-		//
-		// Regardless of our choice of sampling size, the range of frequencies we detect is the same. We just get more precision.
-		// Takeaway: guess what sample size is reasonable.
-		//
+		assert!(max_index == 74);
+		assert!(hz_to_fft_index(800.0, samples_per_second) == max_index);
 	}
 
 	#[test]
-	fn chopin_takes_ages() {
-		use crate::graphics::draw_fft;
-		let file = File::open("chopin.wav").unwrap();
-		let RiffWavePcm { samples, .. } = RiffWavePcm::parse(file).unwrap();
-		let ffts = sliding_fft(&samples[..1 << 24], 1 << 12, 1 << 8);
-		println!("fft size {}", ffts.len());
-		println!("each fft has {} frequency samples", ffts[0].len());
-		draw_fft(&ffts);
+	fn piano_harmonics() {
+		use crate::parser::RiffWavePcm;
+
+		let file = File::open("./test_files/ode.wav").unwrap();
+		let RiffWavePcm { samples, samples_per_second } = RiffWavePcm::parse(file).unwrap();
+		let samples = &*Box::leak(samples);
+		let samples = &samples[..RESOLUTION];
+		let mut re: Vec<Float> = Vec::with_capacity(samples.len());
+		let mut im: Vec<Float> = Vec::with_capacity(samples.len());
+
+		for &sample in samples {
+			re.push(sample as Float);
+			im.push(0 as Float);
+		}
+
+		fft_inplace(&mut re, &mut im);
+
+		let amplitude = spectrum(&re, &im);
+
+		let mut argsort = (0..amplitude.len()).collect::<Vec<usize>>();
+		argsort.sort_by(|&a, &b| amplitude[b].partial_cmp(&amplitude[a]).unwrap()); //Argsort in decreasing order
+		let middle_e = hz_to_fft_index(329.628, samples_per_second);
+		for &freq in argsort[..20].iter() {
+			// Top 20ish strongest frequencies
+			// Must all be harmonics of middle e -- either close to it, or an integer multiple of it
+			assert!((1..10).any(|i| {
+				println!("freq: {}, middle_e * i: {}", freq, middle_e * i);
+				(freq as f32 - (middle_e * i) as f32).abs() < 10.0
+			}));
+		}
+	}
+}
+
+pub mod lib {
+	use crate::{Path, fft::*, graphics::draw_spectra, parser::RiffWavePcm};
+	use std::fs::File;
+
+	pub fn run_demo(path: impl AsRef<Path>) {
+		let file = File::open(path).unwrap();
+		let step_size = 1 << 8;
+		let RiffWavePcm { samples, samples_per_second } = RiffWavePcm::parse(file).unwrap();
+		let spectra = sliding_spectra(&samples, step_size);
+		draw_spectra(&spectra, ffts_per_second(samples_per_second, step_size));
 	}
 }
