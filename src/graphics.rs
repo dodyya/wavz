@@ -193,21 +193,20 @@ fn show_spectrogram(domain: usize, range: usize, image: Vec<u8>, ffts_per_second
 				return;
 			}
 
-			if let Some(sc) = play.as_mut() {
-				sc.handle_scroll(input.scroll_diff().1, domain as isize, width as isize);
+			if let Some(ps) = play.as_mut() {
+				ps.handle_scroll(input.scroll_diff().1, domain as isize, width as isize);
 
 				if input.key_pressed(KeyCode::Space) {
-					sc.tog();
+					ps.tog();
 				}
 
-				let fft_period = 1f64 / ffts_per_second as f64;
 				window.set_title(&format!(
 					"Viewing {}:{} of {}, corresponds to {:.3}s to {:.3}s",
-					sc.x_offset,
-					sc.x_offset + width,
+					ps.x_offset,
+					ps.x_offset + width,
 					domain,
-					(sc.x_offset as f64 * fft_period),
-					(sc.x_offset + width) as f64 * fft_period
+					(ps.x_offset as f64 / ffts_per_second as f64),
+					(ps.x_offset + width) as f64 / ffts_per_second as f64
 				));
 			}
 
