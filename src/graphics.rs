@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use pixels::{Pixels, SurfaceTexture};
-use std::fmt::Display;
+use std::fmt::Debug;
 use std::time::Instant;
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
@@ -21,6 +21,7 @@ const INERTIA_RATIO: f32 = 5f32 / 6f32; // bigger number => more inertia
 const CUTOFF: f32 = 0.05; // Visual cutoff for what is black
 const CLAMP_FACTOR: f32 = 1.0; //Twiddle this to make loud things more uniform
 
+// TODO: Make PlayState aware of when the samples will end, so it can pause gracefully.
 struct PlayState {
 	pub x_offset: usize,
 	pub scroll_v: f32,
@@ -82,7 +83,7 @@ impl PlayState {
 	}
 }
 
-impl Display for PlayState {
+impl Debug for PlayState {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{} samples in, ", self.x_offset)?;
 		write!(
@@ -145,10 +146,10 @@ pub(crate) fn gen_spectrogram(spectra: &mut Vec<Vec<Float>>) -> (usize, usize, V
 		.for_each(|chunk| chunk.copy_from_slice(&[0, 0, 0, 255]));
 
 	for (x, spectrum) in spectra.into_iter().enumerate() {
-		fn gain(x: &f32) -> f32 {
-			*x
-		}
-		spectrum.iter_mut().for_each(|x| *x = gain(x));
+		// fn gain(x: &f32) -> f32 {
+		// 	*x
+		// }
+		// spectrum.iter_mut().for_each(|x| *x = gain(x));
 		let (mi, ma) = extrema(spectrum.iter());
 		let range = CLAMP_FACTOR * (ma - mi);
 		for (y, &value) in spectrum.iter().enumerate() {
@@ -163,8 +164,6 @@ pub(crate) fn gen_spectrogram(spectra: &mut Vec<Vec<Float>>) -> (usize, usize, V
 	}
 
 	return (width, height, img);
-
-	// show_spectrogram(width, height, &img, ffts_per_second);
 }
 
 pub fn show_spectrogram(spectra: (usize, usize, Vec<u8>), ffts_per_second: u32) {
@@ -205,7 +204,13 @@ pub fn show_spectrogram(spectra: (usize, usize, Vec<u8>), ffts_per_second: u32) 
 		{
 			let frame = pixels.frame_mut();
 			if let Some(ps) = play.as_mut() {
-				draw_subview(frame, &img, range, width, domain, ps.x_offset);
+				for y in 0..range {
+					//Drawing the horizontal subview.
+					frame[RGBA * width * y..RGBA * width * (y + 1)].copy_from_slice(
+						&img[RGBA * (ps.x_offset + y * domain)
+							..RGBA * (ps.x_offset + y * domain + width)],
+					);
+				}
 				ps.inc();
 			} else {
 				frame.copy_from_slice(&img);
@@ -230,26 +235,10 @@ pub fn show_spectrogram(spectra: (usize, usize, Vec<u8>), ffts_per_second: u32) 
 					ps.tog();
 				}
 
-				window.set_title(&format!("{} samples generated. {}", domain, ps));
+				window.set_title(&format!("{} samples generated. {:?}", domain, ps));
 			}
 
 			window.request_redraw();
 		}
 	});
-}
-
-#[inline]
-fn draw_subview(
-	frame: &mut [u8],
-	image: &[u8],
-	range: usize,
-	width: usize,
-	domain: usize,
-	x_offset: usize,
-) {
-	for y in 0..range {
-		frame[RGBA * width * y..RGBA * width * (y + 1)].copy_from_slice(
-			&image[RGBA * (x_offset + y * domain)..RGBA * (x_offset + y * domain + width)],
-		);
-	}
 }
