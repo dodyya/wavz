@@ -14,9 +14,9 @@ use crate::fft::Float;
 const PIXEL_SCALE: usize = 2;
 const MAX_WIDTH: usize = 1500;
 const RGBA: usize = 4; //Magic number for bytes/color
-const INERTIA_RATIO: f32 = 5f32 / 6f32; // Bigger => more inertia
-const CUTOFF: f32 = 0.05; // Visual threshold for what shows up as black
-const CLAMP_FACTOR: f32 = 0.8; //
+const INERTIA_RATIO: f32 = 5f32 / 6f32;
+const CUTOFF: f32 = 0.05;
+const CLAMP_FACTOR: f32 = 1.0;
 
 struct PlayState {
 	pub x_offset: usize,
