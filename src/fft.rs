@@ -6,7 +6,6 @@ pub(crate) struct Cplx<T> {
 	pub im: T,
 }
 
-// pub type Fix = FixedI16<U15>;
 pub type Float = f32;
 
 pub(crate) static SINE: LazyLock<Vec<Float>> = LazyLock::new(|| {
@@ -27,14 +26,6 @@ pub(crate) fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
 		v.push((fr[i] * fr[i] + fi[i] * fi[i]).sqrt());
 	}
 	v
-}
-
-pub(crate) fn hz_to_fft_index(hz: f32, samples_per_second: u32) -> usize {
-	(hz * RESOLUTION as f32 / (samples_per_second as f32)).round() as usize
-}
-
-pub(crate) fn ffts_per_second(samples_per_second: u32, step_size: usize) -> u32 {
-	samples_per_second / step_size as u32
 }
 
 /// Takes in a complex slice as real and imaginary parts, and

@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use pixels::{Pixels, SurfaceTexture};
+use std::fmt::Display;
 use std::time::Instant;
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
@@ -10,13 +11,15 @@ use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 use crate::fft::Float;
-
+// TODO: Allow thin-screen playback by revamping playback
+// to have a scrolling vertical bar that represents "now".
+// Ought to defer until we have audio.
 const PIXEL_SCALE: usize = 2;
-const MAX_WIDTH: usize = 1500;
-const RGBA: usize = 4; //Magic number for bytes/color
-const INERTIA_RATIO: f32 = 5f32 / 6f32;
-const CUTOFF: f32 = 0.05;
-const CLAMP_FACTOR: f32 = 1.0;
+const MAX_WIDTH: usize = 1500; // Maximum screen width, determines playability
+const RGBA: usize = 4; // Magic number for bytes/color
+const INERTIA_RATIO: f32 = 5f32 / 6f32; // bigger number => more inertia
+const CUTOFF: f32 = 0.05; // Visual cutoff for what is black
+const CLAMP_FACTOR: f32 = 1.0; //Twiddle this to make loud things more uniform
 
 struct PlayState {
 	pub x_offset: usize,
@@ -26,6 +29,11 @@ struct PlayState {
 }
 
 impl PlayState {
+	#[inline]
+	fn apply_inertia(inertia: f32, delta: f32) -> f32 {
+		(INERTIA_RATIO) * inertia + (1f32 - INERTIA_RATIO) * delta
+	}
+
 	fn inc(&mut self) {
 		if let Some((start_time, start_x)) = self.playing {
 			let dur = start_time.elapsed();
@@ -52,7 +60,7 @@ impl PlayState {
 	}
 
 	fn handle_scroll(&mut self, scroll_in: f32, dom: isize, width: isize) {
-		let scroll_out = apply_inertia(self.scroll_v, scroll_in) as isize;
+		let scroll_out = Self::apply_inertia(self.scroll_v, scroll_in) as isize;
 		match scroll_out {
 			(1..) => {
 				let new_pos = self.x_offset as isize + scroll_out;
@@ -70,34 +78,27 @@ impl PlayState {
 			},
 			_ => {},
 		}
-		self.scroll_v = apply_inertia(self.scroll_v, scroll_out as f32);
+		self.scroll_v = Self::apply_inertia(self.scroll_v, scroll_out as f32);
 	}
 }
 
-#[inline]
-fn hsv2rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
-	let c = v * s;
-	let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
-	let m = v - c;
-	let (r, g, b) = match h {
-		h if h < 60.0 => (c, x, 0.0),
-		h if h < 120.0 => (x, c, 0.0),
-		h if h < 180.0 => (0.0, c, x),
-		h if h < 240.0 => (0.0, x, c),
-		h if h < 300.0 => (x, 0.0, c),
-		_ => (c, 0.0, x),
-	};
-
-	return (
-		((r + m) * 255.0) as u8,
-		((g + m) * 255.0) as u8,
-		((b + m) * 255.0) as u8,
-	);
-}
-
-#[inline]
-fn rgb_from_hue(h: f32) -> (u8, u8, u8) {
-	hsv2rgb(360f32 * h, 1.0, 1.0)
+impl Display for PlayState {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{} samples in, ", self.x_offset)?;
+		write!(
+			f,
+			"{}",
+			if self.playing.is_some() { "Playing, " } else { "Paused, " }
+		)?;
+		let start_t = self.x_offset as f64 / self.ffts_per_second as f64;
+		let mins = (start_t / 60.0).floor();
+		if mins > 0.0 {
+			write!(f, "t={}:{:.2}", mins, start_t % 60.0)?;
+		} else {
+			write!(f, "t={:.2}", start_t % 60.0)?;
+		}
+		Ok(())
+	}
 }
 
 #[inline]
@@ -109,7 +110,33 @@ fn extrema<'a>(v: impl Iterator<Item = &'a f32>) -> (f32, f32) {
 	})
 }
 
-pub(crate) fn generate_spectrogram(spectra: &mut Vec<Vec<Float>>, ffts_per_second: u32) {
+pub(crate) fn gen_spectrogram(spectra: &mut Vec<Vec<Float>>) -> (usize, usize, Vec<u8>) {
+	#[inline]
+	fn hsv2rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
+		let c = v * s;
+		let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+		let m = v - c;
+		let (r, g, b) = match h {
+			h if h < 60.0 => (c, x, 0.0),
+			h if h < 120.0 => (x, c, 0.0),
+			h if h < 180.0 => (0.0, c, x),
+			h if h < 240.0 => (0.0, x, c),
+			h if h < 300.0 => (x, 0.0, c),
+			_ => (c, 0.0, x),
+		};
+
+		return (
+			((r + m) * 255.0) as u8,
+			((g + m) * 255.0) as u8,
+			((b + m) * 255.0) as u8,
+		);
+	}
+
+	#[inline]
+	fn rgb_from_hue(h: f32) -> (u8, u8, u8) {
+		hsv2rgb(360f32 * h, 1.0, 1.0)
+	}
+
 	let width = spectra.len();
 	let height = spectra[0].len();
 
@@ -135,10 +162,13 @@ pub(crate) fn generate_spectrogram(spectra: &mut Vec<Vec<Float>>, ffts_per_secon
 		}
 	}
 
-	show_spectrogram(width, height, img, ffts_per_second);
+	return (width, height, img);
+
+	// show_spectrogram(width, height, &img, ffts_per_second);
 }
 
-fn show_spectrogram(domain: usize, range: usize, image: Vec<u8>, ffts_per_second: u32) {
+pub fn show_spectrogram(spectra: (usize, usize, Vec<u8>), ffts_per_second: u32) {
+	let (domain, range, img) = spectra;
 	let event_loop = EventLoop::new().unwrap();
 	let mut input = WinitInputHelper::new();
 	let mut play: Option<PlayState> = (domain > MAX_WIDTH).then_some(PlayState {
@@ -175,10 +205,10 @@ fn show_spectrogram(domain: usize, range: usize, image: Vec<u8>, ffts_per_second
 		{
 			let frame = pixels.frame_mut();
 			if let Some(ps) = play.as_mut() {
-				draw_subview(frame, &image, range, width, domain, ps.x_offset);
+				draw_subview(frame, &img, range, width, domain, ps.x_offset);
 				ps.inc();
 			} else {
-				frame.copy_from_slice(&image);
+				frame.copy_from_slice(&img);
 			}
 
 			if let Err(_) = pixels.render() {
@@ -200,24 +230,12 @@ fn show_spectrogram(domain: usize, range: usize, image: Vec<u8>, ffts_per_second
 					ps.tog();
 				}
 
-				let fft_period = 1f64 / ffts_per_second as f64;
-				window.set_title(&format!(
-					"Viewing {}:{} of {}, corresponds to {:.3}s to {:.3}s",
-					ps.x_offset,
-					ps.x_offset + width,
-					domain,
-					(ps.x_offset as f64 * fft_period),
-					(ps.x_offset + width) as f64 * fft_period
-				));
+				window.set_title(&format!("{} samples generated. {}", domain, ps));
 			}
 
 			window.request_redraw();
 		}
 	});
-}
-#[inline]
-fn apply_inertia(inertia: f32, delta: f32) -> f32 {
-	(INERTIA_RATIO) * inertia + (1f32 - INERTIA_RATIO) * delta
 }
 
 #[inline]

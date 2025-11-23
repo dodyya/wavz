@@ -12,6 +12,10 @@ mod tests {
 	use crate::fft::*;
 
 	// TODO: rename/remove irrelevant tests
+	// /// Info for debugging
+	fn hz_to_fft_index(hz: f32, samples_per_second: u32) -> usize {
+		(hz * RESOLUTION as f32 / (samples_per_second as f32)).round() as usize
+	}
 
 	#[test]
 	fn wav_read_and_parse() {
@@ -146,15 +150,23 @@ mod tests {
 }
 
 pub mod lib {
-	use crate::{Path, fft::*, graphics::generate_spectrogram, parser::RiffWavePcm};
+	use crate::{
+		Path,
+		fft::*,
+		graphics::{gen_spectrogram, show_spectrogram},
+		parser::RiffWavePcm,
+	};
 	use std::fs::File;
 
 	pub fn run_demo(path: impl AsRef<Path>) {
 		let file = File::open(path).unwrap();
 		let step_size = 1 << 8;
-		let RiffWavePcm { samples, samples_per_second } = RiffWavePcm::parse(file).unwrap();
-		let mut spectra = sliding_spectra(&samples, step_size);
-		generate_spectrogram(&mut spectra, ffts_per_second(samples_per_second, step_size));
+		let RiffWavePcm {
+			samples,
+			samples_per_second: smps,
+		} = RiffWavePcm::parse(file).unwrap();
+		let spectra = gen_spectrogram(&mut sliding_spectra(&samples, step_size));
+		show_spectrogram(spectra, smps / step_size as u32);
 	}
 }
 
