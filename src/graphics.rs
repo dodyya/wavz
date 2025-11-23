@@ -1,24 +1,81 @@
 #![forbid(unsafe_code)]
 
 use pixels::{Pixels, SurfaceTexture};
+use std::time::{Duration, Instant};
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
-use winit::event_loop::EventLoop;
+use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::KeyCode;
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 use crate::fft::Float;
 
-const PIXEL_SCALE: u32 = 2;
+const PIXEL_SCALE: usize = 2;
 const MAX_WIDTH: usize = 1500;
-const BYTES_PER_PIXEL: usize = 4;
+const RGBA: usize = 4; //Magic number for bytes/color
 const INERTIA_RATIO: f32 = 5f32 / 6f32;
 const CUTOFF: f32 = 0.05;
 const CLAMP_FACTOR: f32 = 1.0;
 
+struct PlayState {
+	pub x_offset: usize,
+	pub scroll_v: f32,
+	pub playing: Option<(Instant, usize)>,
+	pub ffts_per_second: u32,
+}
+
+impl PlayState {
+	fn inc(&mut self) {
+		if let Some((start_time, start_x)) = self.playing {
+			let dur = start_time.elapsed();
+			self.x_offset = start_x + (self.ffts_per_second as f32 * dur.as_secs_f32()) as usize;
+		}
+	}
+
+	fn stop(&mut self) {
+		if let Some((start_time, start_x)) = self.playing {
+			let dur = start_time.elapsed();
+			self.x_offset = start_x + (self.ffts_per_second as f32 * dur.as_secs_f32()) as usize;
+		}
+		self.playing = None;
+	}
+
+	fn tog(&mut self) {
+		if let Some((start_time, start_x)) = self.playing {
+			let dur = start_time.elapsed();
+			self.x_offset = start_x + (self.ffts_per_second as f32 * dur.as_secs_f32()) as usize;
+			self.playing = None;
+		} else {
+			self.playing = Some((Instant::now(), self.x_offset));
+		}
+	}
+
+	fn handle_scroll(&mut self, scroll_in: f32, dom: isize, width: isize) {
+		let scroll_out = apply_inertia(self.scroll_v, scroll_in) as isize;
+		match scroll_out {
+			(1..) => {
+				let new_pos = self.x_offset as isize + scroll_out;
+				if new_pos < dom - width {
+					self.x_offset = new_pos as usize;
+				}
+				self.stop();
+			},
+			(..=-1) => {
+				let new_pos = self.x_offset as isize + scroll_out;
+				if new_pos > 0 {
+					self.x_offset = new_pos as usize;
+				}
+				self.stop();
+			},
+			_ => {},
+		}
+		self.scroll_v = apply_inertia(self.scroll_v, scroll_out as f32);
+	}
+}
+
 #[inline]
-fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
+fn hsv2rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
 	let c = v * s;
 	let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
 	let m = v - c;
@@ -40,12 +97,7 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
 
 #[inline]
 fn rgb_from_hue(h: f32) -> (u8, u8, u8) {
-	hsv_to_rgb(360f32 * h, 1.0, 1.0)
-}
-
-#[inline]
-fn apply_inertia(inertia: f32, delta: f32) -> f32 {
-	(INERTIA_RATIO) * inertia + (1f32 - INERTIA_RATIO) * delta
+	hsv2rgb(360f32 * h, 1.0, 1.0)
 }
 
 #[inline]
@@ -67,7 +119,6 @@ pub(crate) fn generate_spectrogram(spectra: &mut Vec<Vec<Float>>, ffts_per_secon
 
 	for (x, spectrum) in spectra.into_iter().enumerate() {
 		fn gain(x: &f32) -> f32 {
-			// x.powi(2)
 			*x
 		}
 		spectrum.iter_mut().for_each(|x| *x = gain(x));
@@ -87,22 +138,20 @@ pub(crate) fn generate_spectrogram(spectra: &mut Vec<Vec<Float>>, ffts_per_secon
 	show_spectrogram(width, height, img, ffts_per_second);
 }
 
-fn show_spectrogram(width: usize, height: usize, image: Vec<u8>, ffts_per_second: u32) {
+fn show_spectrogram(domain: usize, range: usize, image: Vec<u8>, ffts_per_second: u32) {
 	let event_loop = EventLoop::new().unwrap();
 	let mut input = WinitInputHelper::new();
-	let scrollable: bool = width > MAX_WIDTH;
-	dbg!(scrollable);
-	let pixel_width = if scrollable { MAX_WIDTH as f64 } else { width as f64 };
-	dbg!(pixel_width);
-	let mut x_offset: usize = 0;
-	let mut scroll_v: f32 = 0.0;
-	let mut play: bool = false;
+	let mut play: Option<PlayState> = (domain > MAX_WIDTH).then_some(PlayState {
+		x_offset: 0,
+		scroll_v: 0.0,
+		playing: None,
+		ffts_per_second,
+	});
+	let height = range;
+	let width = domain.clamp(0, MAX_WIDTH);
 
 	let window = {
-		let size = PhysicalSize::new(
-			pixel_width * PIXEL_SCALE as f64,
-			height as f64 * PIXEL_SCALE as f64,
-		);
+		let size = PhysicalSize::new((width * PIXEL_SCALE) as u32, (height * PIXEL_SCALE) as u32);
 		WindowBuilder::new()
 			.with_title("")
 			.with_inner_size(size)
@@ -115,7 +164,7 @@ fn show_spectrogram(width: usize, height: usize, image: Vec<u8>, ffts_per_second
 	let mut pixels = {
 		let window_size = window.inner_size();
 		let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
-		Pixels::new(pixel_width as u32, height as u32, surface_texture).unwrap()
+		Pixels::new(width as u32, height as u32, surface_texture).unwrap()
 	};
 
 	let _ = event_loop.run(|event, elwt| {
@@ -125,23 +174,13 @@ fn show_spectrogram(width: usize, height: usize, image: Vec<u8>, ffts_per_second
 		} = event
 		{
 			let frame = pixels.frame_mut();
-			if !scrollable {
-				frame.copy_from_slice(&image);
+			if let Some(sc) = play.as_mut() {
+				draw_subview(frame, &image, range, width, domain, sc.x_offset);
+				sc.inc();
 			} else {
-				for y in 0..height {
-					frame[y * pixel_width as usize * BYTES_PER_PIXEL
-						..(y + 1) * pixel_width as usize * BYTES_PER_PIXEL]
-						.copy_from_slice(
-							&image[BYTES_PER_PIXEL * (x_offset + y * width as usize)
-								..BYTES_PER_PIXEL
-									* (x_offset + y * width as usize + pixel_width as usize)],
-						);
-				}
+				frame.copy_from_slice(&image);
 			}
 
-			if play {
-				x_offset += 3;
-			}
 			if let Err(_) = pixels.render() {
 				elwt.exit();
 				return;
@@ -154,42 +193,45 @@ fn show_spectrogram(width: usize, height: usize, image: Vec<u8>, ffts_per_second
 				return;
 			}
 
-			if !scrollable {
-				return;
+			if let Some(sc) = play.as_mut() {
+				sc.handle_scroll(input.scroll_diff().1, domain as isize, width as isize);
+
+				if input.key_pressed(KeyCode::Space) {
+					sc.tog();
+				}
+
+				let fft_period = 1f64 / ffts_per_second as f64;
+				window.set_title(&format!(
+					"Viewing {}:{} of {}, corresponds to {:.3}s to {:.3}s",
+					sc.x_offset,
+					sc.x_offset + width,
+					domain,
+					(sc.x_offset as f64 * fft_period),
+					(sc.x_offset + width) as f64 * fft_period
+				));
 			}
 
-			let scroll = apply_inertia(scroll_v, input.scroll_diff().1);
-			match scroll {
-				(0.0..) => {
-					let new_pos = x_offset as isize + scroll as isize;
-					if new_pos < width as isize - pixel_width as isize {
-						x_offset = new_pos as usize;
-					}
-				},
-				(..0.0) => {
-					let new_pos = x_offset as isize + scroll as isize;
-					if new_pos > 0 {
-						x_offset = new_pos as usize;
-					}
-				},
-				_ => {},
-			}
-			scroll_v = apply_inertia(scroll_v, scroll);
-
-			if input.key_pressed(KeyCode::Space) {
-				play = !play;
-			}
-
-			let fft_period = 1f64 / ffts_per_second as f64;
-			window.set_title(&format!(
-				"Viewing {}:{} of {}, corresponds to {:.3}s to {:.3}s",
-				x_offset,
-				x_offset + pixel_width as usize,
-				width,
-				(x_offset as f64 * fft_period),
-				(x_offset + pixel_width as usize) as f64 * fft_period
-			));
 			window.request_redraw();
 		}
 	});
+}
+#[inline]
+fn apply_inertia(inertia: f32, delta: f32) -> f32 {
+	(INERTIA_RATIO) * inertia + (1f32 - INERTIA_RATIO) * delta
+}
+
+#[inline]
+fn draw_subview(
+	frame: &mut [u8],
+	image: &[u8],
+	range: usize,
+	width: usize,
+	domain: usize,
+	x_offset: usize,
+) {
+	for y in 0..range {
+		frame[RGBA * width * y..RGBA * width * (y + 1)].copy_from_slice(
+			&image[RGBA * (x_offset + y * domain)..RGBA * (x_offset + y * domain + width)],
+		);
+	}
 }
