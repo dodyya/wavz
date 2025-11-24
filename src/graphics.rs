@@ -12,6 +12,8 @@ use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 use crate::fft::Float;
+
+// TODO: lower the scope of some of these constants (move them into functions or structs if not used everywhere)
 // TODO: Allow thin-screen playback by revamping playback
 // to have a scrolling vertical bar that represents "now".
 // Ought to defer until we have audio.
@@ -105,14 +107,21 @@ impl Debug for PlayState {
 
 #[inline]
 // TODO: figure out if theres an easier way
-/// made because f32 doesn't implement Ord, so can't just use .max()/.min()
+/// made because `f32` doesn't implement `Ord`, so can't just use the max or min methods
 fn extrema<'a>(v: impl Iterator<Item = &'a f32>) -> (f32, f32) {
 	v.fold((f32::MAX, f32::MIN), |(curr_min, curr_max), &x| {
 		(curr_min.min(x), curr_max.max(x))
 	})
 }
 
+// TODO: switch away from nested vec arguments across the codebase. This could be moving
+// towards boxed slices which can be converted into &mut [T] to take &mut [&mut T] arguments,
+// or it could be moving to a custom BoxSlice2d and Slice2d struct (I think this is likely to work out best)
 pub fn gen_spectrogram(spectra: &mut Vec<Vec<Float>>) -> (usize, usize, Vec<u8>) {
+	// TODO: this is only ever to be used in rgb_from_hue. inline it
+	// TODO: move to Rgba struct return type and more broadly across the codebase
+	// TODO: make the hue argument an integer type; f32: [0.0, 360.0] doesn't really
+	// make that much sense for the argument here
 	#[inline]
 	fn hsv2rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
 		let c = v * s;
@@ -127,11 +136,11 @@ pub fn gen_spectrogram(spectra: &mut Vec<Vec<Float>>) -> (usize, usize, Vec<u8>)
 			_ => (c, 0.0, x),
 		};
 
-		return (
+		(
 			((r + m) * 255.0) as u8,
 			((g + m) * 255.0) as u8,
 			((b + m) * 255.0) as u8,
-		);
+		)
 	}
 
 	#[inline]
@@ -142,20 +151,19 @@ pub fn gen_spectrogram(spectra: &mut Vec<Vec<Float>>) -> (usize, usize, Vec<u8>)
 	let width = spectra.len();
 	let height = spectra[0].len();
 
+	// TODO: everything that touches this vector could use a refactor. Mainly moving from
+	// u8 to Rgba struct and using Rgba more broadly elsewhere
+	// also the mathy logic here could be moved out of the function or could use some comments
 	let mut img = vec![0u8; width * height * 4];
 	img.chunks_exact_mut(4)
 		.for_each(|chunk| chunk.copy_from_slice(&[0, 0, 0, 255]));
 
-	for (x, spectrum) in spectra.into_iter().enumerate() {
-		// fn gain(x: &f32) -> f32 {
-		// 	*x
-		// }
-		// spectrum.iter_mut().for_each(|x| *x = gain(x));
-		let (mi, ma) = extrema(spectrum.iter());
-		let range = CLAMP_FACTOR * (ma - mi);
+	for (x, spectrum) in spectra.iter_mut().enumerate() {
+		let (min, max) = extrema(spectrum.iter());
+		let range = CLAMP_FACTOR * (max - min);
 		for (y, &value) in spectrum.iter().enumerate() {
-			let start = (x as usize + y as usize * width as usize) * 4;
-			let normed_hue = ((value - mi) / range).clamp(0.0, 1.0);
+			let start = (x + y * width) * 4;
+			let normed_hue = ((value - min) / range).clamp(0.0, 1.0);
 			let (r, g, b) = rgb_from_hue(normed_hue);
 
 			if normed_hue > CUTOFF {
@@ -164,7 +172,7 @@ pub fn gen_spectrogram(spectra: &mut Vec<Vec<Float>>) -> (usize, usize, Vec<u8>)
 		}
 	}
 
-	return (width, height, img);
+	(width, height, img)
 }
 
 pub fn show_spectrogram(spectra: (usize, usize, Vec<u8>), ffts_per_second: u32) {
@@ -217,7 +225,7 @@ pub fn show_spectrogram(spectra: (usize, usize, Vec<u8>), ffts_per_second: u32) 
 				frame.copy_from_slice(&img);
 			}
 
-			if let Err(_) = pixels.render() {
+			if pixels.render().is_err() {
 				elwt.exit();
 				return;
 			}
@@ -236,7 +244,7 @@ pub fn show_spectrogram(spectra: (usize, usize, Vec<u8>), ffts_per_second: u32) 
 					ps.tog();
 				}
 
-				window.set_title(&format!("{} samples generated. {:?}", domain, ps));
+				window.set_title(&format!("{domain} samples generated. {ps:?}"));
 			}
 
 			window.request_redraw();

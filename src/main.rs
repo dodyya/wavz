@@ -1,5 +1,3 @@
-use std::fs::File;
-
 mod demos {
 	use std::io::{Read, Seek};
 	use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,6 +10,7 @@ mod demos {
 	use wavez::graphics::{gen_spectrogram, show_spectrogram};
 	use wavez::parser::RiffWavePcm;
 
+	#[allow(unused)]
 	pub fn wav_visualizer(data: impl Read + Seek) {
 		let RiffWavePcm {
 			samples,
@@ -23,6 +22,7 @@ mod demos {
 		show_spectrogram(spectra, smps / step_size as u32);
 	}
 
+	#[allow(unused)]
 	pub fn wav_player(data: impl Read + Seek) {
 		let host = cpal::default_host();
 
@@ -59,8 +59,8 @@ mod demos {
 						data.copy_from_slice(head);
 						samples = tail;
 					} else {
-						(&mut data[..samples.len()]).copy_from_slice(samples);
-						(&mut data[samples.len()..]).fill(0);
+						data[..samples.len()].copy_from_slice(samples);
+						data[samples.len()..].fill(0);
 						samples = &[];
 						(is_done).store(true, Ordering::Relaxed);
 					}
@@ -74,15 +74,17 @@ mod demos {
 
 		while !is_done.load(Ordering::Relaxed) {}
 	}
-	fn display(spectrum: Vec<f32>) {
+
+	fn display(spectrum: &[f32]) {
 		// Display the spectrum data here
-		let mut printable: String = "".into();
+		let mut buf = String::new();
 		for x in spectrum.chunks_exact(3) {
-			printable.push_str(if x[0] > 0.0001 { "X" } else { " " });
+			buf.push_str(if x[0] > 0.0001 { "X" } else { " " });
 		}
-		println!("{}", printable);
+		println!("{buf}");
 	}
 
+	#[allow(unused)]
 	pub fn mic_input() {
 		let host = cpal::default_host();
 
@@ -90,7 +92,7 @@ mod demos {
 
 		println!("using audio device named \"{}\"", device.name().unwrap());
 		let config = device.default_input_config().unwrap();
-		println!("{:?}", config);
+		println!("{config:?}");
 
 		let err_fn = move |err| {
 			eprintln!("an error occurred on stream: {err}");
@@ -105,7 +107,7 @@ mod demos {
 							let mut fr = data.to_vec();
 							let mut fi = vec![0f32; fft::RESOLUTION];
 							fft::fft_inplace(&mut fr, &mut fi);
-							display(fft::spectrum(&fr, &fi));
+							display(&fft::spectrum(&fr, &fi));
 						},
 						err_fn,
 						None,
@@ -118,12 +120,15 @@ mod demos {
 		};
 
 		let _ = stream.play();
-		thread::sleep(Duration::from_millis(1000000));
+		thread::sleep(Duration::from_millis(1_000_000));
 		drop(stream);
 	}
 }
 
 fn main() {
+	#[allow(unused)]
+	use std::fs::File;
+
 	#[allow(unused)]
 	const PATH: &str = "test_files/800hz.wav";
 

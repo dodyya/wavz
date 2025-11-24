@@ -138,16 +138,16 @@ impl RiffWavePcm {
 		const MAX_SAMPLE_BLOCKS: usize = 10_000_000;
 
 		// PERF: see if specialization for len=2 yields benefits
-		/// stolen from https://github.com/ascent12/average/blob/master/avg.c
+		/// stolen from <https://github.com/ascent12/average/blob/master/avg.c>
 		fn avg_perfect(slice: &[i16]) -> i16 {
 			let n = slice.len() as i64;
 			let mut avg: i16 = 0;
 
 			let mut error = 0;
 
-			for i in 0..slice.len() {
-				error += (slice[i] as i64 % n) as i16;
-				avg += ((slice[i] as i64 / n) + (error as i64 / n)) as i16;
+			for &val in slice {
+				error += (val as i64 % n) as i16;
+				avg += ((val as i64 / n) + (error as i64 / n)) as i16;
 				error = (error as i64 % n) as i16;
 			}
 
