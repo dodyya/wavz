@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
 
-use pixels::{Pixels, SurfaceTexture};
 use std::fmt::Debug;
 use std::time::Instant;
+
+use pixels::{Pixels, SurfaceTexture};
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
@@ -103,15 +104,15 @@ impl Debug for PlayState {
 }
 
 #[inline]
-///Did this because f32 doesn't implement Ord, so can't just use .max()/.min()
-/// TODO: figure out if theres an easier way
+// TODO: figure out if theres an easier way
+/// made because f32 doesn't implement Ord, so can't just use .max()/.min()
 fn extrema<'a>(v: impl Iterator<Item = &'a f32>) -> (f32, f32) {
 	v.fold((f32::MAX, f32::MIN), |(curr_min, curr_max), &x| {
 		(curr_min.min(x), curr_max.max(x))
 	})
 }
 
-pub(crate) fn gen_spectrogram(spectra: &mut Vec<Vec<Float>>) -> (usize, usize, Vec<u8>) {
+pub fn gen_spectrogram(spectra: &mut Vec<Vec<Float>>) -> (usize, usize, Vec<u8>) {
 	#[inline]
 	fn hsv2rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
 		let c = v * s;

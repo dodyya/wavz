@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 pub const RESOLUTION: usize = 1 << 9;
 
-pub(crate) struct Cplx<T> {
+struct Cplx<T> {
 	pub re: T,
 	pub im: T,
 }
@@ -84,7 +84,7 @@ pub fn fft_inplace(fr: &mut [Float], fi: &mut [Float]) {
 	}
 }
 
-pub(crate) fn sliding_spectra(samples: &[i16], step_size: usize) -> Vec<Vec<Float>> {
+pub fn sliding_spectra(samples: &[i16], step_size: usize) -> Vec<Vec<Float>> {
 	let mut ffts = Vec::new();
 	let mut start = 0;
 
