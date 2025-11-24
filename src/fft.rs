@@ -1,5 +1,5 @@
 use std::sync::LazyLock;
-pub(crate) const RESOLUTION: usize = 1 << 12;
+pub const RESOLUTION: usize = 1 << 9;
 
 pub(crate) struct Cplx<T> {
 	pub re: T,
@@ -17,7 +17,7 @@ pub(crate) static SINE: LazyLock<Vec<Float>> = LazyLock::new(|| {
 });
 
 /// Takes an fft result and returns the magnitude vector of the Nyquist range
-pub(crate) fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
+pub fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
 	assert_eq!(RESOLUTION, fr.len());
 	assert!(RESOLUTION.is_power_of_two() && fi.len() == RESOLUTION);
 
@@ -30,7 +30,7 @@ pub(crate) fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
 
 /// Takes in a complex slice as real and imaginary parts, and
 /// performs the FFT in-place. Magic.
-pub(crate) fn fft_inplace(fr: &mut [Float], fi: &mut [Float]) {
+pub fn fft_inplace(fr: &mut [Float], fi: &mut [Float]) {
 	assert_eq!(RESOLUTION, fr.len());
 	assert!(RESOLUTION.is_power_of_two() && fi.len() == RESOLUTION);
 
