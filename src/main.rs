@@ -7,8 +7,9 @@ mod demos {
 	use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 	use cpal::{BufferSize, SampleRate, StreamConfig};
 	use wavez::fft;
-	use wavez::graphics::{gen_spectrogram, show_spectrogram};
+	use wavez::graphics::gen_spectrogram;
 	use wavez::parser::RiffWavePcm;
+	use wavez::player::show_spectrogram;
 
 	#[allow(unused)]
 	pub fn wav_visualizer(data: impl Read + Seek) {

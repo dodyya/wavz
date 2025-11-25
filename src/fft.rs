@@ -1,11 +1,34 @@
 use std::sync::LazyLock;
 
-use crate::graphics::BoxSlice2D;
 pub const RESOLUTION: usize = 1 << 12;
 
 struct Cplx<T> {
 	pub re: T,
 	pub im: T,
+}
+
+pub struct BoxSlice2D<T> {
+	pub data: Box<[T]>,
+	pub width: usize,
+	pub height: usize,
+}
+
+impl<T: Default + Copy> BoxSlice2D<T> {
+	pub fn new(width: usize, height: usize) -> Self {
+		BoxSlice2D {
+			data: vec![Default::default(); width * height].into_boxed_slice(),
+			width,
+			height,
+		}
+	}
+
+	pub fn row_mut(&mut self, row: usize) -> &mut [T] {
+		&mut self.data[row * self.width..(row + 1) * self.width]
+	}
+
+	pub fn row(&self, row: usize) -> &[T] {
+		&self.data[row * self.width..(row + 1) * self.width]
+	}
 }
 
 pub type Float = f32;
