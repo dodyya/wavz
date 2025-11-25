@@ -87,6 +87,9 @@ mod demos {
 
 	#[allow(unused)]
 	pub fn mic_input() {
+		use wavez::fft::RESOLUTION;
+		use wavez::fft::fft_inplace;
+		use wavez::fft::spectrum;
 		let host = cpal::default_host();
 
 		let device = host.default_input_device().unwrap();
@@ -99,15 +102,29 @@ mod demos {
 			eprintln!("an error occurred on stream: {err}");
 		};
 
+		let mut buf = Vec::new();
+		let mut start = 0;
+		let step_size = 1 << 9;
+
 		let stream = match config.sample_format() {
 			cpal::SampleFormat::F32 => device
 				.build_input_stream(
 					&config.into(),
 					move |data: &[f32], _: &_| {
-						let mut fr = data.to_vec();
-						let mut fi = vec![0f32; fft::RESOLUTION];
-						fft::fft_inplace(&mut fr, &mut fi);
-						display(&fft::spectrum(&fr, &fi));
+						buf.extend_from_slice(data);
+						while buf.len() - start > RESOLUTION {
+							let end = start + RESOLUTION;
+							let fr = &mut buf[start..end];
+							let mut vi = vec![0.0; RESOLUTION];
+							let fi = &mut vi;
+							fft_inplace(fr, fi);
+							display(&spectrum(fr, fi));
+							start += step_size;
+						}
+						if start > 0 && (start > 4096 || start * 2 > buf.len()) {
+							buf.drain(..start);
+							start = 0;
+						}
 					},
 					err_fn,
 					None,
@@ -128,10 +145,9 @@ fn main() {
 	#[allow(unused)]
 	use std::fs::File;
 
-	#[allow(unused)]
 	const PATH: &str = "test_files/mariah.wav";
 
-	// demos::mic_input();
+	demos::mic_input();
 	// demos::wav_player(File::open(PATH).unwrap());
-	demos::wav_visualizer(File::open(PATH).unwrap());
+	// demos::wav_visualizer(File::open(PATH).unwrap());
 }
