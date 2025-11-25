@@ -1,5 +1,7 @@
 use std::sync::LazyLock;
-pub const RESOLUTION: usize = 1 << 9;
+
+use crate::graphics::BoxSlice2D;
+pub const RESOLUTION: usize = 1 << 12;
 
 struct Cplx<T> {
 	pub re: T,
@@ -84,24 +86,27 @@ pub fn fft_inplace(fr: &mut [Float], fi: &mut [Float]) {
 	}
 }
 
-pub fn sliding_spectra(samples: &[i16], step_size: usize) -> Vec<Vec<Float>> {
-	let mut ffts = Vec::new();
+pub fn sliding_spectra(samples: Box<[i16]>, step_size: usize) -> BoxSlice2D<Float> {
+	let num_ffts = (samples.len() - RESOLUTION) / step_size;
 	let mut start = 0;
+	let mut out = BoxSlice2D::<Float>::new(RESOLUTION / 2, samples.len() / step_size);
 
-	while start + RESOLUTION <= samples.len() {
-		let mut fr = Vec::with_capacity(RESOLUTION);
-		let mut fi = Vec::with_capacity(RESOLUTION);
+	for i in 0..num_ffts {
+		// while start + RESOLUTION <= samples.len() {
+		let mut fr = Box::new([0.0; RESOLUTION]);
+		let mut fi = Box::new([0.0; RESOLUTION]);
 
-		for &sample in &samples[start..start + RESOLUTION] {
-			fr.push(sample as Float);
-			fi.push(0 as Float);
+		// fr.clone_from_slice(&samples[start..start + RESOLUTION]);
+		for i in 0..RESOLUTION {
+			fr[i] = samples[i + start] as Float;
 		}
 
-		fft_inplace(&mut fr, &mut fi);
-		ffts.push(spectrum(&fr, &fi));
+		fft_inplace(fr.as_mut(), fi.as_mut());
+		out.row_mut(i)
+			.clone_from_slice(&spectrum(fr.as_slice(), fi.as_slice()));
 
 		start += step_size;
 	}
 
-	ffts
+	out
 }

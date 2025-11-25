@@ -18,7 +18,7 @@ mod demos {
 		} = RiffWavePcm::parse(data).unwrap();
 
 		let step_size = 1 << 8;
-		let spectra = gen_spectrogram(&mut fft::sliding_spectra(&samples, step_size));
+		let spectra = gen_spectrogram(fft::sliding_spectra(samples, step_size));
 		show_spectrogram(spectra, smps / step_size as u32);
 	}
 
@@ -99,21 +99,19 @@ mod demos {
 		};
 
 		let stream = match config.sample_format() {
-			cpal::SampleFormat::F32 => {
-				device
-					.build_input_stream(
-						&config.into(),
-						move |data: &[f32], _: &_| {
-							let mut fr = data.to_vec();
-							let mut fi = vec![0f32; fft::RESOLUTION];
-							fft::fft_inplace(&mut fr, &mut fi);
-							display(&fft::spectrum(&fr, &fi));
-						},
-						err_fn,
-						None,
-					)
-					.unwrap()
-			},
+			cpal::SampleFormat::F32 => device
+				.build_input_stream(
+					&config.into(),
+					move |data: &[f32], _: &_| {
+						let mut fr = data.to_vec();
+						let mut fi = vec![0f32; fft::RESOLUTION];
+						fft::fft_inplace(&mut fr, &mut fi);
+						display(&fft::spectrum(&fr, &fi));
+					},
+					err_fn,
+					None,
+				)
+				.unwrap(),
 			sample_format => {
 				panic!("Unsupported sample format '{sample_format}'")
 			},
@@ -130,9 +128,9 @@ fn main() {
 	use std::fs::File;
 
 	#[allow(unused)]
-	const PATH: &str = "test_files/800hz.wav";
+	const PATH: &str = "test_files/mariah.wav";
 
-	demos::mic_input();
+	// demos::mic_input();
 	// demos::wav_player(File::open(PATH).unwrap());
-	// demos::wav_visualizer(File::open(PATH).unwrap());
+	demos::wav_visualizer(File::open(PATH).unwrap());
 }

@@ -1,7 +1,7 @@
-#![forbid(unsafe_code)]
-
 use std::fmt::Debug;
 use std::time::Instant;
+
+use bytemuck::{NoUninit, cast_slice};
 
 use pixels::{Pixels, SurfaceTexture};
 use winit::dpi::PhysicalSize;
@@ -112,15 +112,47 @@ fn extrema<'a>(v: impl Iterator<Item = &'a f32>) -> (f32, f32) {
 	})
 }
 
-// TODO: switch away from nested vec arguments across the codebase. This could be moving
-// towards boxed slices which can be converted into &mut [T] to take &mut [&mut T] arguments,
-// or it could be moving to a custom BoxSlice2d and Slice2d struct (I think this is likely to work out best)
-pub fn gen_spectrogram(spectra: &mut Vec<Vec<Float>>) -> (usize, usize, Vec<u8>) {
-	// TODO: this is only ever to be used in rgb_from_hue. inline it
-	// TODO: move to Rgba struct return type and more broadly across the codebase
-	// TODO: make the hue argument an integer type; f32: [0.0, 360.0] doesn't really
-	// make that much sense for the argument here
-	fn hsv2rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
+pub struct BoxSlice2D<T> {
+	data: Box<[T]>,
+	width: usize,
+	height: usize,
+}
+
+impl<T: Default + Copy> BoxSlice2D<T> {
+	pub fn new(width: usize, height: usize) -> Self {
+		BoxSlice2D {
+			data: vec![Default::default(); width * height].into_boxed_slice(),
+			width,
+			height,
+		}
+	}
+
+	pub fn row_mut(&mut self, row: usize) -> &mut [T] {
+		&mut self.data[row * self.width..(row + 1) * self.width]
+	}
+
+	pub fn row(&self, row: usize) -> &[T] {
+		&self.data[row * self.width..(row + 1) * self.width]
+	}
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, NoUninit)]
+pub struct Rgba {
+	r: u8,
+	g: u8,
+	b: u8,
+	a: u8,
+}
+
+impl Rgba {
+	const BLACK: Rgba = Rgba { r: 0, g: 0, b: 0, a: 255 };
+	const WHITE: Rgba = Rgba { r: 255, g: 255, b: 255, a: 255 };
+
+	fn rgb(r: u8, g: u8, b: u8) -> Self {
+		Rgba { r, g, b, a: 255 }
+	}
+	fn hsv(h: f32, s: f32, v: f32) -> Self {
 		let c = v * s;
 		let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
 		let m = v - c;
@@ -133,47 +165,56 @@ pub fn gen_spectrogram(spectra: &mut Vec<Vec<Float>>) -> (usize, usize, Vec<u8>)
 			_ => (c, 0.0, x),
 		};
 
-		(
+		Self::rgb(
 			((r + m) * 255.0) as u8,
 			((g + m) * 255.0) as u8,
 			((b + m) * 255.0) as u8,
 		)
 	}
-
-	#[inline]
-	fn rgb_from_hue(h: f32) -> (u8, u8, u8) {
-		hsv2rgb(360f32 * h, 1.0, 1.0)
+	fn hue(h: f32) -> Self {
+		Self::hsv(360.0 * h, 1.0, 1.0)
 	}
+	fn to_bytes(&self) -> [u8; 4] {
+		[self.r, self.g, self.b, self.a]
+	}
+}
 
-	let width = spectra.len();
-	let height = spectra[0].len();
+// TODO: switch away from nested vec arguments across the codebase. This could be moving
+// towards boxed slices which can be converted into &mut [T] to take &mut [&mut T] arguments,
+// or it could be moving to a custom BoxSlice2d and Slice2d struct (I think this is likely to work out best)
+pub fn gen_spectrogram(spectra: BoxSlice2D<Float>) -> BoxSlice2D<Rgba> {
+	let width = spectra.height; //TRANSPOSE!
+	let height = spectra.width;
 
-	// TODO: everything that touches this vector could use a refactor. Mainly moving from
-	// u8 to Rgba struct and using Rgba more broadly elsewhere
-	// also the mathy logic here could be moved out of the function or could use some comments
-	let mut img = vec![0u8; width * height * 4];
-	img.chunks_exact_mut(4)
-		.for_each(|chunk| chunk.copy_from_slice(&[0, 0, 0, 255]));
+	let mut img = vec![Rgba::BLACK; width * height];
 
-	for (x, spectrum) in spectra.iter_mut().enumerate() {
+	for x in 0..width {
+		let spectrum = spectra.row(x);
 		let (min, max) = extrema(spectrum.iter());
 		let range = CLAMP_FACTOR * (max - min);
 		for (y, &value) in spectrum.iter().enumerate() {
-			let start = (x + y * width) * 4;
+			let start = x + y * width;
 			let normed_hue = ((value - min) / range).clamp(0.0, 1.0);
-			let (r, g, b) = rgb_from_hue(normed_hue);
+			let pix_color = Rgba::hue(normed_hue);
 
 			if normed_hue > CUTOFF {
-				img[start..start + 3].copy_from_slice(&[r, g, b]);
+				img[start] = pix_color;
 			}
 		}
 	}
 
-	(width, height, img)
+	BoxSlice2D {
+		width,
+		height,
+		data: img.into_boxed_slice(),
+	}
 }
 
-pub fn show_spectrogram(spectra: (usize, usize, Vec<u8>), ffts_per_second: u32) {
-	let (domain, range, img) = spectra;
+pub fn show_spectrogram(spectra: BoxSlice2D<Rgba>, ffts_per_second: u32) {
+	let domain = spectra.width;
+	let range = spectra.height;
+	let img = spectra.data;
+
 	let event_loop = EventLoop::new().unwrap();
 	let mut input = WinitInputHelper::new();
 	let mut play: Option<PlayState> = (domain > MAX_WIDTH).then_some(PlayState {
@@ -212,14 +253,13 @@ pub fn show_spectrogram(spectra: (usize, usize, Vec<u8>), ffts_per_second: u32) 
 			if let Some(ps) = play.as_mut() {
 				for y in 0..range {
 					//Drawing the horizontal subview.
-					frame[RGBA * width * y..RGBA * width * (y + 1)].copy_from_slice(
-						&img[RGBA * (ps.x_offset + y * domain)
-							..RGBA * (ps.x_offset + y * domain + width)],
-					);
+					frame[RGBA * width * y..RGBA * width * (y + 1)].copy_from_slice(cast_slice(
+						&img[(ps.x_offset + y * domain)..(ps.x_offset + y * domain + width)],
+					));
 				}
 				ps.inc();
 			} else {
-				frame.copy_from_slice(&img);
+				frame.copy_from_slice(cast_slice(&img));
 			}
 
 			if pixels.render().is_err() {
