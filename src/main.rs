@@ -114,11 +114,10 @@ mod demos {
 						buf.extend_from_slice(data);
 						while buf.len() - start > RESOLUTION {
 							let end = start + RESOLUTION;
-							let fr = &mut buf[start..end];
+							let mut vr = buf[start..end].to_vec();
 							let mut vi = vec![0.0; RESOLUTION];
-							let fi = &mut vi;
-							fft_inplace(fr, fi);
-							display(&spectrum(fr, fi));
+							fft_inplace(&mut vr, &mut vi);
+							display(&spectrum(&vr, &vi));
 							start += step_size;
 						}
 						if start > 0 && (start > 4096 || start * 2 > buf.len()) {
