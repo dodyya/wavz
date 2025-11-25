@@ -33,7 +33,6 @@ struct PlayState {
 }
 
 impl PlayState {
-	#[inline]
 	fn apply_inertia(inertia: f32, delta: f32) -> f32 {
 		(INERTIA_RATIO) * inertia + (1f32 - INERTIA_RATIO) * delta
 	}
@@ -105,7 +104,6 @@ impl Debug for PlayState {
 	}
 }
 
-#[inline]
 // TODO: figure out if theres an easier way
 /// made because `f32` doesn't implement `Ord`, so can't just use the max or min methods
 fn extrema<'a>(v: impl Iterator<Item = &'a f32>) -> (f32, f32) {
@@ -122,7 +120,6 @@ pub fn gen_spectrogram(spectra: &mut Vec<Vec<Float>>) -> (usize, usize, Vec<u8>)
 	// TODO: move to Rgba struct return type and more broadly across the codebase
 	// TODO: make the hue argument an integer type; f32: [0.0, 360.0] doesn't really
 	// make that much sense for the argument here
-	#[inline]
 	fn hsv2rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
 		let c = v * s;
 		let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
