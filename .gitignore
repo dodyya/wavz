@@ -23,6 +23,7 @@ target
 
 # Added by cargo
 
-/target
+test_files
+
+# remove later
 Cargo.lock
-chopin.wav
