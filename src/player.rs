@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use bytemuck::cast_slice;
@@ -12,7 +13,8 @@ use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 use crate::fft::BoxSlice2D;
-use crate::graphics::Rgba;
+use crate::fft::mic_spectra;
+use crate::graphics::{Rgba, gen_spectrogram};
 
 // TODO: lower the scope of some of these constants (move them into functions or structs if not used everywhere)
 // TODO: Allow thin-screen playback by revamping playback
@@ -175,6 +177,105 @@ pub fn show_spectrogram(spectra: BoxSlice2D<Rgba>, ffts_per_second: u32) {
 
 				window.set_title(&format!("{domain} samples generated. {ps:?}"));
 			}
+
+			window.request_redraw();
+		}
+	});
+}
+pub struct State {
+	pub play_idx: usize,
+	pub buf: Vec<f32>,
+}
+
+pub fn show_mic(mic: Arc<Mutex<State>>, step_size: usize) {
+	use crate::fft::RESOLUTION;
+	let event_loop = EventLoop::new().unwrap();
+	let mut input = WinitInputHelper::new();
+	let height = RESOLUTION / 2;
+	let width = MAX_WIDTH;
+
+	let window = {
+		let size = PhysicalSize::new((width * PIXEL_SCALE) as u32, (height * PIXEL_SCALE) as u32);
+		WindowBuilder::new()
+			.with_title("")
+			.with_inner_size(size)
+			.with_min_inner_size(size)
+			.with_resizable(false)
+			.build(&event_loop)
+			.unwrap()
+	};
+
+	let mut pixels = {
+		let window_size = window.inner_size();
+		let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
+		Pixels::new(width as u32, height as u32, surface_texture).unwrap()
+	};
+
+	let mut pbuf = BoxSlice2D::<Rgba>::new(width, height);
+
+	let mut first_undrawn_sample: usize = 0; //Index into our sample buffer from which to continue drawing
+
+	let _ = event_loop.run(|event, elwt| {
+		if let Event::WindowEvent {
+			event: WindowEvent::RedrawRequested,
+			..
+		} = event
+		{
+			let frame = pixels.frame_mut();
+
+			let mut x_offset = mic.lock().unwrap().play_idx / step_size;
+			//println!("{}", x_offset);
+			if x_offset > 100 {
+				x_offset -= 100;
+			}
+
+			//Extending our pixel buffer
+			let to_draw = mic.lock().unwrap().buf[first_undrawn_sample..]
+				.to_vec()
+				.into_boxed_slice();
+			if to_draw.len() > RESOLUTION * 10 {
+				let spectra = mic_spectra(to_draw, step_size);
+				first_undrawn_sample += RESOLUTION + step_size * spectra.height; // How many samples we just successfully ate
+				let new_pix = gen_spectrogram(spectra);
+				pbuf = pbuf.concatenate(&new_pix);
+			} else {
+				//println!("{}", to_draw.len())
+			}
+
+			let domain = pbuf.width;
+
+			if x_offset + width > domain {
+				println!("pbuf lagging behind, {} < {}", domain, x_offset + width);
+			} else {
+				for y in 0..height {
+					frame[RGBA * width * y..RGBA * width * (y + 1)].copy_from_slice(cast_slice(
+						&pbuf.data[(x_offset + y * domain)..(x_offset + y * domain + width)],
+					));
+				}
+			}
+
+			if pixels.render().is_err() {
+				elwt.exit();
+				return;
+			}
+		}
+
+		if input.update(&event) {
+			if input.key_pressed(KeyCode::KeyQ) || input.close_requested() {
+				elwt.exit();
+				return;
+			}
+
+			// if let Some(ps) = play.as_mut() {
+			// 	ps.handle_scroll(input.scroll_diff().1, domain as isize, width as isize);
+
+			if input.key_pressed(KeyCode::KeyF) {
+				pbuf.drain_cols(1000);
+				first_undrawn_sample -= 1000 * step_size;
+			}
+
+			// 	window.set_title(&format!("{domain} samples generated. {ps:?}"));
+			// }
 
 			window.request_redraw();
 		}

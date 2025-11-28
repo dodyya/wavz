@@ -17,7 +17,7 @@ fn extrema<'a>(v: impl Iterator<Item = &'a f32>) -> (f32, f32) {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, NoUninit)]
+#[derive(Debug, Clone, Copy, NoUninit, Default)]
 pub struct Rgba {
 	r: u8,
 	g: u8,
