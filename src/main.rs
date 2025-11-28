@@ -77,9 +77,8 @@ mod demos {
 	}
 
 	fn display(spectrum: &[f32]) {
-		// Display the spectrum data here
 		let mut buf = String::new();
-		for x in spectrum.chunks_exact(12) {
+		for x in spectrum.chunks_exact(14) {
 			let max_amp = x.iter().fold(0.0f32, |acc, &x| acc.max(x));
 			buf.push_str(match max_amp {
 				(..0.0001) => " ",
