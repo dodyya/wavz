@@ -7,8 +7,9 @@ mod demos {
 	use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 	use cpal::{BufferSize, SampleRate, StreamConfig};
 	use wavez::fft;
-	use wavez::graphics::{gen_spectrogram, show_spectrogram};
+	use wavez::graphics::gen_spectrogram;
 	use wavez::parser::RiffWavePcm;
+	use wavez::player::show_spectrogram;
 
 	#[allow(unused)]
 	pub fn wav_visualizer(data: impl Read + Seek) {
@@ -18,7 +19,7 @@ mod demos {
 		} = RiffWavePcm::parse(data).unwrap();
 
 		let step_size = 1 << 8;
-		let spectra = gen_spectrogram(&mut fft::sliding_spectra(&samples, step_size));
+		let spectra = gen_spectrogram(fft::sliding_spectra(samples, step_size));
 		show_spectrogram(spectra, smps / step_size as u32);
 	}
 
@@ -76,16 +77,27 @@ mod demos {
 	}
 
 	fn display(spectrum: &[f32]) {
-		// Display the spectrum data here
 		let mut buf = String::new();
-		for x in spectrum.chunks_exact(3) {
-			buf.push_str(if x[0] > 0.0001 { "X" } else { " " });
+		for x in spectrum.chunks_exact(14) {
+			let max_amp = x.iter().fold(0.0f32, |acc, &x| acc.max(x));
+			buf.push_str(match max_amp {
+				(..0.0001) => " ",
+				(..0.0002) => ".",
+				(..0.0004) => "+",
+				(..0.0006) => "*",
+				(..0.0010) => "#",
+				(..0.0020) => "$",
+				_ => "@",
+			});
 		}
 		println!("{buf}");
 	}
 
 	#[allow(unused)]
 	pub fn mic_input() {
+		use wavez::fft::RESOLUTION;
+		use wavez::fft::fft_inplace;
+		use wavez::fft::spectrum;
 		let host = cpal::default_host();
 
 		let device = host.default_input_device().unwrap();
@@ -98,22 +110,33 @@ mod demos {
 			eprintln!("an error occurred on stream: {err}");
 		};
 
+		let mut buf = Vec::new();
+		let mut start = 0;
+		let step_size = 1 << 9;
+
 		let stream = match config.sample_format() {
-			cpal::SampleFormat::F32 => {
-				device
-					.build_input_stream(
-						&config.into(),
-						move |data: &[f32], _: &_| {
-							let mut fr = data.to_vec();
-							let mut fi = vec![0f32; fft::RESOLUTION];
-							fft::fft_inplace(&mut fr, &mut fi);
-							display(&fft::spectrum(&fr, &fi));
-						},
-						err_fn,
-						None,
-					)
-					.unwrap()
-			},
+			cpal::SampleFormat::F32 => device
+				.build_input_stream(
+					&config.into(),
+					move |data: &[f32], _: &_| {
+						buf.extend_from_slice(data);
+						while buf.len() - start > RESOLUTION {
+							let end = start + RESOLUTION;
+							let mut vr = buf[start..end].to_vec();
+							let mut vi = vec![0.0; RESOLUTION];
+							fft_inplace(&mut vr, &mut vi);
+							display(&spectrum(&vr, &vi));
+							start += step_size;
+						}
+						if start > 0 && (start > 4096 || start * 2 > buf.len()) {
+							buf.drain(..start);
+							start = 0;
+						}
+					},
+					err_fn,
+					None,
+				)
+				.unwrap(),
 			sample_format => {
 				panic!("Unsupported sample format '{sample_format}'")
 			},
@@ -129,8 +152,7 @@ fn main() {
 	#[allow(unused)]
 	use std::fs::File;
 
-	#[allow(unused)]
-	const PATH: &str = "test_files/800hz.wav";
+	const PATH: &str = "test_files/mariah.wav";
 
 	demos::mic_input();
 	// demos::wav_player(File::open(PATH).unwrap());

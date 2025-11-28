@@ -1,6 +1,7 @@
 pub mod fft;
 pub mod graphics;
 pub mod parser;
+pub mod player;
 
 #[cfg(test)]
 mod tests {
