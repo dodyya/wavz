@@ -17,7 +17,7 @@ fn extrema<'a>(v: impl Iterator<Item = &'a f32>) -> (f32, f32) {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, NoUninit, Default)]
+#[derive(Debug, Clone, Copy, NoUninit)]
 pub struct Rgba {
 	r: u8,
 	g: u8,
@@ -53,6 +53,12 @@ impl Rgba {
 	}
 	fn hue(h: f32) -> Self {
 		Self::hsv(360.0 * h, 1.0, 1.0)
+	}
+}
+
+impl Default for Rgba {
+	fn default() -> Self {
+		Rgba::BLACK
 	}
 }
 

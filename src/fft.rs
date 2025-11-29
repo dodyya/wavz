@@ -154,11 +154,7 @@ pub fn sliding_spectra(samples: Box<[i16]>, step_size: usize) -> BoxSlice2D<Floa
 	out
 }
 
-pub fn mic_spectra(samples: Box<[f32]>, step_size: usize) -> BoxSlice2D<Float> {
-	if samples.len() < RESOLUTION {
-		panic!("Not enough samples");
-	}
-
+pub fn mic_spectra(samples: Box<[f32]>, step_size: usize) -> BoxSlice2D<f32> {
 	let num_ffts = (samples.len() - RESOLUTION) / step_size;
 	let mut start = 0;
 	let mut out = BoxSlice2D::<Float>::new(RESOLUTION / 2, num_ffts);

@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -13,6 +14,7 @@ use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 use crate::fft::BoxSlice2D;
+use crate::fft::RESOLUTION;
 use crate::fft::mic_spectra;
 use crate::graphics::{Rgba, gen_spectrogram};
 
@@ -182,12 +184,40 @@ pub fn show_spectrogram(spectra: BoxSlice2D<Rgba>, ffts_per_second: u32) {
 		}
 	});
 }
-pub struct State {
-	pub play_idx: usize,
-	pub buf: Vec<f32>,
+pub struct Buffer<T> {
+	pub idx: usize,
+	pub buf: Vec<T>,
 }
 
-pub fn show_mic(mic: Arc<Mutex<State>>, step_size: usize) {
+pub fn compute_ffts(
+	mic_buf: Arc<Mutex<Buffer<f32>>>,
+	step_size: usize,
+) -> Option<BoxSlice2D<Rgba>> {
+	const FLUSH_SIZE: usize = 1 << 14;
+	let idx = mic_buf.lock().unwrap().idx;
+	let available_length = mic_buf.lock().unwrap().buf.len() - idx;
+	if available_length < RESOLUTION * 6 {
+		return None;
+	}
+
+	let vslice = gen_spectrogram(mic_spectra(
+		mic_buf.lock().unwrap().buf[idx..]
+			.to_owned()
+			.into_boxed_slice(),
+		step_size,
+	));
+
+	mic_buf.lock().unwrap().idx = available_length - RESOLUTION + step_size;
+
+	if mic_buf.lock().unwrap().idx > FLUSH_SIZE {
+		mic_buf.lock().unwrap().idx -= FLUSH_SIZE;
+		mic_buf.lock().unwrap().buf.drain(..FLUSH_SIZE);
+	}
+
+	return Some(vslice);
+}
+
+pub fn show_mic(mic: Arc<Mutex<Buffer<f32>>>, step_size: usize) {
 	use crate::fft::RESOLUTION;
 	let event_loop = EventLoop::new().unwrap();
 	let mut input = WinitInputHelper::new();
@@ -211,9 +241,11 @@ pub fn show_mic(mic: Arc<Mutex<State>>, step_size: usize) {
 		Pixels::new(width as u32, height as u32, surface_texture).unwrap()
 	};
 
-	let mut pbuf = BoxSlice2D::<Rgba>::new(width, height);
+	let mut to_draw: VecDeque<BoxSlice2D<Rgba>> = VecDeque::new();
+	const X_STEP: usize = 5;
 
-	let mut first_undrawn_sample: usize = 0; //Index into our sample buffer from which to continue drawing
+	let mut vslice_x = 0;
+	let mut current_vslice: Option<BoxSlice2D<Rgba>> = None;
 
 	let _ = event_loop.run(|event, elwt| {
 		if let Event::WindowEvent {
@@ -223,34 +255,37 @@ pub fn show_mic(mic: Arc<Mutex<State>>, step_size: usize) {
 		{
 			let frame = pixels.frame_mut();
 
-			let mut x_offset = mic.lock().unwrap().play_idx / step_size;
-			//println!("{}", x_offset);
-			if x_offset > 100 {
-				x_offset -= 100;
+			if let Some(vslice) = compute_ffts(mic.clone(), step_size) {
+				to_draw.push_back(vslice);
 			}
 
-			//Extending our pixel buffer
-			let to_draw = mic.lock().unwrap().buf[first_undrawn_sample..]
-				.to_vec()
-				.into_boxed_slice();
-			if to_draw.len() > RESOLUTION * 10 {
-				let spectra = mic_spectra(to_draw, step_size);
-				first_undrawn_sample += RESOLUTION + step_size * spectra.height; // How many samples we just successfully ate
-				let new_pix = gen_spectrogram(spectra);
-				pbuf = pbuf.concatenate(&new_pix);
-			} else {
-				//println!("{}", to_draw.len())
+			if current_vslice.is_none() {
+				current_vslice = to_draw.pop_front();
+				vslice_x = 0;
 			}
 
-			let domain = pbuf.width;
+			if let Some(vslice) = &current_vslice {
+				if vslice_x + X_STEP <= vslice.width {
+					for y in 0..height {
+						frame.copy_within(
+							RGBA * ((width) * y + X_STEP)..RGBA * (width) * (y + 1),
+							RGBA * width * y,
+						);
 
-			if x_offset + width > domain {
-				println!("pbuf lagging behind, {} < {}", domain, x_offset + width);
-			} else {
-				for y in 0..height {
-					frame[RGBA * width * y..RGBA * width * (y + 1)].copy_from_slice(cast_slice(
-						&pbuf.data[(x_offset + y * domain)..(x_offset + y * domain + width)],
-					));
+						frame[RGBA * width * (y + 1) - X_STEP * RGBA..RGBA * width * (y + 1)]
+							.copy_from_slice(cast_slice(
+								&vslice.row(y)[vslice_x..vslice_x + X_STEP],
+							));
+					}
+					vslice_x += X_STEP;
+				} else {
+					current_vslice = None;
+					// for y in 0..height {
+					// 	frame.copy_within(
+					// 		RGBA * ((width) * y + X_STEP)..RGBA * (width) * (y + 1),
+					// 		0,
+					// 	);
+					// }
 				}
 			}
 
@@ -268,11 +303,6 @@ pub fn show_mic(mic: Arc<Mutex<State>>, step_size: usize) {
 
 			// if let Some(ps) = play.as_mut() {
 			// 	ps.handle_scroll(input.scroll_diff().1, domain as isize, width as isize);
-
-			if input.key_pressed(KeyCode::KeyF) {
-				pbuf.drain_cols(1000);
-				first_undrawn_sample -= 1000 * step_size;
-			}
 
 			// 	window.set_title(&format!("{domain} samples generated. {ps:?}"));
 			// }

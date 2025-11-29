@@ -150,7 +150,7 @@ mod demos {
 	}
 
 	pub fn mic_into_pixels() {
-		use wavez::player::State;
+		use wavez::player::Buffer;
 		use wavez::player::show_mic;
 		let host = cpal::default_host();
 
@@ -161,17 +161,15 @@ mod demos {
 		let err_fn = move |err| {
 			eprintln!("an error occurred on stream: {err}");
 		};
-
-		let state: Arc<Mutex<State>> = Arc::new(Mutex::new(State { play_idx: 0, buf: Vec::new() }));
-		let state_clone = state.clone();
+		let mic = Arc::new(Mutex::new(Buffer::<f32> { buf: Vec::new(), idx: 0 }));
+		let mic_clone = mic.clone();
 
 		let stream = match config.sample_format() {
 			cpal::SampleFormat::F32 => device
 				.build_input_stream(
 					&config.into(),
 					move |data: &[f32], _: &_| {
-						state.lock().unwrap().buf.extend_from_slice(data); //IMPORTANT: Player must flush
-						state.lock().unwrap().play_idx += data.len();
+						mic.lock().unwrap().buf.extend_from_slice(data);
 					},
 					err_fn,
 					None,
@@ -183,7 +181,7 @@ mod demos {
 		};
 
 		let _ = stream.play();
-		show_mic(state_clone, 1 << 9);
+		show_mic(mic_clone, 1 << 9);
 		thread::sleep(Duration::from_millis(1_000_000));
 		drop(stream);
 	}
