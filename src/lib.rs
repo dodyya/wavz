@@ -3,6 +3,7 @@ pub mod graphics;
 pub mod parser;
 pub mod player;
 pub mod rgba;
+pub mod static_vis;
 
 #[cfg(test)]
 mod tests {
@@ -128,7 +129,7 @@ mod tests {
 			re.push(sample as Float);
 		}
 
-		let amplitude = fft_spectrum(re);
+		let amplitude = fft_spectrum(&re);
 
 		let mut argsort = (0..amplitude.len()).collect::<Vec<usize>>();
 		argsort.sort_by(|&a, &b| amplitude[b].partial_cmp(&amplitude[a]).unwrap()); //Argsort in decreasing order

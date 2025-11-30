@@ -11,12 +11,11 @@ mod demos {
 
 	use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 	use cpal::{BufferSize, SampleRate, StreamConfig};
-	use ringbuf::traits::RingBuffer;
 	use wavez::fft::fft_spectrum;
 	use wavez::graphics::gen_spectrogram;
 	use wavez::parser::RiffWavePcm;
-	use wavez::player::show_spectrogram;
-	use wavez::player::sliding_spectra;
+	use wavez::static_vis::show_spectrogram;
+	use wavez::static_vis::sliding_spectra;
 
 	#[allow(unused)]
 	pub fn wav_visualizer(data: impl Read + Seek) {
@@ -124,9 +123,7 @@ mod demos {
 					move |data: &[f32], _: &_| {
 						buf.extend_from_slice(data);
 						while buf.len() - start > RESOLUTION {
-							let end = start + RESOLUTION;
-							let mut vr = buf[start..end].to_vec();
-							ascii_display(&fft_spectrum(vr));
+							ascii_display(&fft_spectrum(&buf[start..start + RESOLUTION]));
 							start += step_size;
 						}
 						if start > 0 && (start > 4096 || start * 2 > buf.len()) {
@@ -149,44 +146,7 @@ mod demos {
 	}
 
 	pub fn mic_into_pixels() {
-		use wavez::player::show_mic;
-		let host = cpal::default_host();
-		use ringbuf::HeapRb;
-
-		let device = host.default_input_device().unwrap();
-
-		let config = device.default_input_config().unwrap();
-
-		let err_fn = move |err| {
-			eprintln!("an error occurred on stream: {err}");
-		};
-
-		let mic = Arc::new(Mutex::new(HeapRb::new(1 << 13)));
-		let mic_clone = mic.clone();
-		let start = Instant::now();
-		let mut count = 0usize;
-
-		let stream = match config.sample_format() {
-			cpal::SampleFormat::F32 => device
-				.build_input_stream(
-					&config.into(),
-					move |data: &[f32], _: &_| {
-						mic.lock().unwrap().push_slice_overwrite(data);
-						println!("Mic: {:?}", thread::current().id());
-					},
-					err_fn,
-					None,
-				)
-				.unwrap(),
-			sample_format => {
-				panic!("Unsupported sample format '{sample_format}'")
-			},
-		};
-
-		let _ = stream.play();
-		show_mic(mic_clone, 1 << 9);
-		thread::sleep(Duration::from_millis(1_000_000));
-		drop(stream);
+		wavez::player::mic_into_pixels();
 	}
 }
 
