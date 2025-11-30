@@ -29,22 +29,19 @@ enum FftEvent {
 pub fn mic_into_pixels() {
 	const STEP_SIZE: usize = 1 << 9;
 	let host = cpal::default_host();
-
 	let device = host.default_input_device().unwrap();
-
 	let config = device.default_input_config().unwrap();
-
 	let err_fn = move |err| {
 		eprintln!("an error occurred on stream: {err}");
 	};
 
 	let (mut mic_prod, mut mic_cons) = HeapRb::<f32>::new(RESOLUTION * 2).split();
 
-	fn extrema<'a>(v: impl Iterator<Item = &'a f32>) -> (f32, f32) {
-		v.fold((f32::MAX, f32::MIN), |(curr_min, curr_max), &x| {
-			(curr_min.min(x), curr_max.max(x))
-		})
-	}
+	// fn extrema<'a>(v: impl Iterator<Item = &'a f32>) -> (f32, f32) {
+	// 	v.fold((f32::MAX, f32::MIN), |(curr_min, curr_max), &x| {
+	// 		(curr_min.min(x), curr_max.max(x))
+	// 	})
+	// }
 
 	let stream = match config.sample_format() {
 		cpal::SampleFormat::F32 => device
@@ -52,7 +49,7 @@ pub fn mic_into_pixels() {
 				&config.into(),
 				move |data: &[f32], _: &_| {
 					mic_prod.push_slice(data);
-					dbg!(extrema(data.iter()));
+					// dbg!(extrema(data.iter()));
 				},
 				err_fn,
 				None,

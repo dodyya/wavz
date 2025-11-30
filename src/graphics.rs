@@ -2,9 +2,6 @@ use crate::fft::BoxSlice2D;
 use crate::fft::Float;
 use crate::rgba::*;
 
-const CUTOFF: f32 = 0.05; // Visual cutoff for what is black
-const CLAMP_FACTOR: f32 = 1.0; //Twiddle this to make loud things look more uniform
-
 // TODO: figure out if theres an easier way
 /// made because `f32` doesn't implement `Ord`, so can't just use the max or min methods
 
@@ -34,6 +31,7 @@ pub fn render_spectrum(spectrum: &[f32]) -> Vec<Rgba> {
 	// dbg!(min, max);
 	// let range = CLAMP_FACTOR * (max - min);
 	const RANGE: f32 = 0.001;
+	const CUTOFF: f32 = 0.05; // Visual cutoff for what is black
 	spectrum
 		.iter()
 		.map(|&value| {

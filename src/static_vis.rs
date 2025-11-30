@@ -13,7 +13,7 @@ use winit_input_helper::WinitInputHelper;
 
 use crate::fft::BoxSlice2D;
 use crate::fft::RESOLUTION;
-use crate::fft::fft_spectrum;
+use crate::fft::fft_spectrum_into;
 use crate::rgba::Rgba;
 
 // TODO: lower the scope of some of these constants (move them into functions or structs if not used everywhere)
@@ -195,8 +195,7 @@ pub fn sliding_spectra(samples: Box<[i16]>, step_size: usize) -> BoxSlice2D<f32>
 			fr[i] = samples[i + start] as f32 / i16::MAX as f32 / 2.0;
 		}
 
-		out.row_mut(i).clone_from_slice(&fft_spectrum(fr.as_mut()));
-
+		fft_spectrum_into(out.row_mut(i), fr.as_mut());
 		start += step_size;
 	}
 
