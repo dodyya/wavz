@@ -1,13 +1,12 @@
 use std::fmt::Debug;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use bytemuck::cast_slice;
 
 use pixels::{Pixels, SurfaceTexture};
-use ringbuf::{HeapRb, traits::Consumer as _, traits::RingBuffer as _};
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
-use winit::event_loop::{EventLoop, EventLoopBuilder};
+use winit::event_loop::EventLoop;
 use winit::keyboard::KeyCode;
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;

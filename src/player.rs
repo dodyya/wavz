@@ -1,10 +1,11 @@
+use crate::fft::RESOLUTION;
 use std::sync::Arc;
-use std::sync::mpsc::Receiver;
 use std::thread;
 
-use bytemuck::cast_slice;
-
+use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use pixels::{Pixels, SurfaceTexture};
+use ringbuf::traits::{Consumer as _, Producer as _, Split as _};
+use std::time::Duration;
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{EventLoop, EventLoopBuilder};
@@ -12,11 +13,10 @@ use winit::keyboard::KeyCode;
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-use crate::fft::BoxSlice2D;
-use crate::fft::RESOLUTION;
 use crate::fft::fft_spectrum;
 use crate::graphics::render_spectrum;
 use crate::rgba::Rgba;
+use ringbuf::HeapRb;
 
 const PIXEL_SCALE: usize = 2;
 const MAX_WIDTH: usize = 1500; // Maximum screen width, determines playability
@@ -28,13 +28,6 @@ enum FftEvent {
 }
 pub fn mic_into_pixels() {
 	const STEP_SIZE: usize = 1 << 9;
-	use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
-	use ringbuf::HeapRb;
-	use ringbuf::storage::Heap;
-	use ringbuf::traits::{Consumer as _, Producer as _, Split as _};
-	use std::sync::mpsc::channel;
-	use std::time::Duration;
-	use winit::event_loop::EventLoopBuilder;
 	let host = cpal::default_host();
 
 	let device = host.default_input_device().unwrap();
@@ -110,8 +103,6 @@ pub fn mic_into_pixels() {
 }
 
 fn show_mic(event_loop: EventLoop<FftEvent>) {
-	use crate::fft::RESOLUTION;
-
 	let mut input = WinitInputHelper::new();
 	let height = RESOLUTION / 2;
 	let width = MAX_WIDTH;
@@ -179,12 +170,6 @@ fn show_mic(event_loop: EventLoop<FftEvent>) {
 				elwt.exit();
 				return;
 			}
-
-			// if let Some(ps) = play.as_mut() {
-			// 	ps.handle_scroll(input.scroll_diff().1, domain as isize, width as isize);
-
-			// 	window.set_title(&format!("{domain} samples generated. {ps:?}"));
-			// }
 
 			window.request_redraw();
 		}

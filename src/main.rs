@@ -1,13 +1,10 @@
-use std::collections::VecDeque;
 use std::io::{Read, Seek};
 
 mod demos {
 	use std::io::{Read, Seek};
-	use std::sync::Arc;
-	use std::sync::Mutex;
 	use std::sync::atomic::{AtomicBool, Ordering};
 	use std::thread;
-	use std::time::{Duration, Instant};
+	use std::time::Duration;
 
 	use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 	use cpal::{BufferSize, SampleRate, StreamConfig};
