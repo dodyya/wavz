@@ -106,11 +106,9 @@ mod demos {
 		}
 
 		let host = cpal::default_host();
-
 		let device = host.default_input_device().unwrap();
-
 		let config = device.default_input_config().unwrap();
-
+		println!("{:?}", config);
 		let err_fn = move |err| {
 			eprintln!("an error occurred on stream: {err}");
 		};
@@ -161,9 +159,9 @@ fn main() {
 
 	const PATH: &str = "test_files/ostavi.wav";
 
-	// demos::mic_input();
+	demos::mic_input();
 	// demos::wav_player(File::open(PATH).unwrap());
-	demos::wav_visualizer(File::open(PATH).unwrap());
+	// demos::wav_visualizer(File::open(PATH).unwrap());
 	// demos::mic_into_pixels();
 }
 
