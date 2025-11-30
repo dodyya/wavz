@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-pub const RESOLUTION: usize = 1 << 12;
+pub const RESOLUTION: usize = 1 << 12; // 4096
 
 struct Cplx<T> {
 	pub re: T,
@@ -65,9 +65,6 @@ pub(crate) static SINE: LazyLock<Vec<Float>> = LazyLock::new(|| {
 
 /// Takes an fft result and returns the magnitude vector of the Nyquist range
 fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
-	assert_eq!(RESOLUTION, fr.len());
-	assert!(RESOLUTION.is_power_of_two() && fi.len() == RESOLUTION);
-
 	let mut v = Vec::with_capacity(RESOLUTION / 2);
 	for i in 0..RESOLUTION / 2 {
 		v.push((fr[i] * fr[i] + fi[i] * fi[i]).sqrt());
@@ -75,14 +72,17 @@ fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
 	v
 }
 
-pub fn fft_spectrum(fr: &mut [Float], fi: &mut [Float]) -> Vec<Float> {
-	fft_inplace(fr, fi);
-	spectrum(fr, fi)
+pub fn fft_spectrum(mut fr: Vec<Float>) -> Vec<Float> {
+	assert_eq!(RESOLUTION, fr.len());
+	assert!(RESOLUTION.is_power_of_two());
+	let mut fi = vec![0.0; RESOLUTION];
+	fft_inplace(&mut fr, &mut fi);
+	spectrum(&fr, &fi)
 }
 
 /// Takes in a complex slice as real and imaginary parts, and
 /// performs the FFT in-place. Magic.
-pub fn fft_inplace(fr: &mut [Float], fi: &mut [Float]) {
+pub(crate) fn fft_inplace(fr: &mut [Float], fi: &mut [Float]) {
 	assert_eq!(RESOLUTION, fr.len());
 	assert!(RESOLUTION.is_power_of_two() && fi.len() == RESOLUTION);
 
@@ -134,49 +134,4 @@ pub fn fft_inplace(fr: &mut [Float], fi: &mut [Float]) {
 		lookup -= 1;
 		temp_len = combined_len;
 	}
-}
-
-pub fn sliding_spectra(samples: Box<[i16]>, step_size: usize) -> BoxSlice2D<Float> {
-	let num_ffts = (samples.len() - RESOLUTION) / step_size;
-	let mut start = 0;
-	let mut out = BoxSlice2D::<Float>::new(RESOLUTION / 2, num_ffts);
-
-	for i in 0..num_ffts {
-		let mut fr = Box::new([0.0; RESOLUTION]);
-		let mut fi = Box::new([0.0; RESOLUTION]);
-
-		for i in 0..RESOLUTION {
-			fr[i] = samples[i + start] as Float;
-		}
-
-		out.row_mut(i)
-			.clone_from_slice(&fft_spectrum(fr.as_mut(), fi.as_mut()));
-
-		start += step_size;
-	}
-
-	out
-}
-
-pub fn mic_spectra(samples: Box<[f32]>, step_size: usize) -> BoxSlice2D<f32> {
-	let num_ffts = (samples.len() - RESOLUTION) / step_size;
-	let mut start = 0;
-	let mut out = BoxSlice2D::<Float>::new(RESOLUTION / 2, num_ffts);
-
-	for i in 0..num_ffts {
-		let mut fr = Box::new([0.0; RESOLUTION]);
-		let mut fi = Box::new([0.0; RESOLUTION]);
-
-		for i in 0..RESOLUTION {
-			fr[i] = samples[i + start] as Float;
-		}
-
-		fft_inplace(fr.as_mut(), fi.as_mut());
-		out.row_mut(i)
-			.clone_from_slice(&spectrum(fr.as_slice(), fi.as_slice()));
-
-		start += step_size;
-	}
-
-	out
 }

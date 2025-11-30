@@ -2,6 +2,7 @@ pub mod fft;
 pub mod graphics;
 pub mod parser;
 pub mod player;
+pub mod rgba;
 
 #[cfg(test)]
 mod tests {
@@ -122,14 +123,12 @@ mod tests {
 		let samples = &*Box::leak(samples);
 		let samples = &samples[..RESOLUTION];
 		let mut re: Vec<Float> = Vec::with_capacity(samples.len());
-		let mut im: Vec<Float> = Vec::with_capacity(samples.len());
 
 		for &sample in samples {
 			re.push(sample as Float);
-			im.push(0 as Float);
 		}
 
-		let amplitude = fft_spectrum(&mut re, &mut im);
+		let amplitude = fft_spectrum(re);
 
 		let mut argsort = (0..amplitude.len()).collect::<Vec<usize>>();
 		argsort.sort_by(|&a, &b| amplitude[b].partial_cmp(&amplitude[a]).unwrap()); //Argsort in decreasing order

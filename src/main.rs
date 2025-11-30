@@ -13,10 +13,10 @@ mod demos {
 	use cpal::{BufferSize, SampleRate, StreamConfig};
 	use ringbuf::traits::RingBuffer;
 	use wavez::fft::fft_spectrum;
-	use wavez::fft::sliding_spectra;
 	use wavez::graphics::gen_spectrogram;
 	use wavez::parser::RiffWavePcm;
 	use wavez::player::show_spectrogram;
+	use wavez::player::sliding_spectra;
 
 	#[allow(unused)]
 	pub fn wav_visualizer(data: impl Read + Seek) {
@@ -86,7 +86,6 @@ mod demos {
 	#[allow(unused)]
 	pub fn mic_input() {
 		use wavez::fft::RESOLUTION;
-		use wavez::fft::fft_inplace;
 		fn ascii_display(spectrum: &[f32]) {
 			let mut buf = String::new();
 			for x in spectrum.chunks_exact(14) {
@@ -127,8 +126,7 @@ mod demos {
 						while buf.len() - start > RESOLUTION {
 							let end = start + RESOLUTION;
 							let mut vr = buf[start..end].to_vec();
-							let mut vi = vec![0.0; RESOLUTION];
-							ascii_display(&fft_spectrum(&mut vr, &mut vi));
+							ascii_display(&fft_spectrum(vr));
 							start += step_size;
 						}
 						if start > 0 && (start > 4096 || start * 2 > buf.len()) {
@@ -154,7 +152,6 @@ mod demos {
 		use wavez::player::show_mic;
 		let host = cpal::default_host();
 		use ringbuf::HeapRb;
-		use ringbuf::traits::{Consumer as _, Producer as _};
 
 		let device = host.default_input_device().unwrap();
 
@@ -198,8 +195,8 @@ fn main() {
 
 	// demos::mic_input();
 	// demos::wav_player(File::open(PATH).unwrap());
-	// demos::wav_visualizer(File::open(PATH).unwrap());
-	demos::mic_into_pixels();
+	demos::wav_visualizer(File::open(PATH).unwrap());
+	// demos::mic_into_pixels();
 }
 
 // struct PlayerState {

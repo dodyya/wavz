@@ -17,8 +17,8 @@ use winit_input_helper::WinitInputHelper;
 use crate::fft::BoxSlice2D;
 use crate::fft::RESOLUTION;
 use crate::fft::fft_spectrum;
-use crate::graphics::Rgba;
 use crate::graphics::render_spectrum;
+use crate::rgba::Rgba;
 
 // TODO: lower the scope of some of these constants (move them into functions or structs if not used everywhere)
 // TODO: Allow thin-screen playback by revamping playback
@@ -193,12 +193,8 @@ pub fn fft_maker(
 	step_size: usize,
 ) {
 	let mut fr = vec![0.0; RESOLUTION];
-	let mut fi = vec![0.0; RESOLUTION];
 	mic_buf.lock().unwrap().peek_slice(&mut fr);
-	fft_buf
-		.lock()
-		.unwrap()
-		.push_overwrite(fft_spectrum(&mut fr, &mut fi));
+	fft_buf.lock().unwrap().push_overwrite(fft_spectrum(fr));
 
 	mic_buf.lock().unwrap().pop_slice(&mut vec![0.0; step_size]);
 }
@@ -284,4 +280,43 @@ pub fn show_mic(mic: Arc<Mutex<HeapRb<f32>>>, step_size: usize) {
 			window.request_redraw();
 		}
 	});
+}
+pub fn sliding_spectra(samples: Box<[i16]>, step_size: usize) -> BoxSlice2D<f32> {
+	let num_ffts = (samples.len() - RESOLUTION) / step_size;
+	let mut start = 0;
+	let mut out = BoxSlice2D::<f32>::new(RESOLUTION / 2, num_ffts);
+
+	for i in 0..num_ffts {
+		let mut fr = Box::new([0.0; RESOLUTION]);
+
+		for i in 0..RESOLUTION {
+			fr[i] = samples[i + start] as f32;
+		}
+
+		out.row_mut(i).clone_from_slice(&fft_spectrum(fr.to_vec()));
+
+		start += step_size;
+	}
+
+	out
+}
+
+pub fn mic_spectra(samples: Box<[f32]>, step_size: usize) -> BoxSlice2D<f32> {
+	let num_ffts = (samples.len() - RESOLUTION) / step_size;
+	let mut start = 0;
+	let mut out = BoxSlice2D::<f32>::new(RESOLUTION / 2, num_ffts);
+
+	for i in 0..num_ffts {
+		let mut fr = vec![0.0; RESOLUTION];
+
+		for i in 0..RESOLUTION {
+			fr[i] = samples[i + start] as f32;
+		}
+
+		out.row_mut(i).clone_from_slice(&fft_spectrum(fr));
+
+		start += step_size;
+	}
+
+	out
 }
