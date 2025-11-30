@@ -40,12 +40,19 @@ pub fn mic_into_pixels() {
 
 	let (mut mic_prod, mut mic_cons) = HeapRb::<f32>::new(RESOLUTION * 2).split();
 
+	fn extrema<'a>(v: impl Iterator<Item = &'a f32>) -> (f32, f32) {
+		v.fold((f32::MAX, f32::MIN), |(curr_min, curr_max), &x| {
+			(curr_min.min(x), curr_max.max(x))
+		})
+	}
+
 	let stream = match config.sample_format() {
 		cpal::SampleFormat::F32 => device
 			.build_input_stream(
 				&config.into(),
 				move |data: &[f32], _: &_| {
 					mic_prod.push_slice(data);
+					dbg!(extrema(data.iter()));
 				},
 				err_fn,
 				None,
@@ -63,7 +70,7 @@ pub fn mic_into_pixels() {
 	let send_proxy = event_loop.create_proxy();
 
 	thread::spawn(move || {
-		let mut mic_buf = Vec::<f32>::with_capacity(RESOLUTION * 20);
+		let mut fft_buf = Vec::<f32>::with_capacity(RESOLUTION * 20);
 		let mut incoming = vec![0.0f32; RESOLUTION];
 		let mut idx: usize = 0;
 
@@ -75,14 +82,16 @@ pub fn mic_into_pixels() {
 				continue;
 			}
 
-			mic_buf.extend_from_slice(&incoming[..n]);
+			fft_buf.extend_from_slice(&incoming[..n]);
 
-			while idx + RESOLUTION < mic_buf.len() {
+			while idx + RESOLUTION < fft_buf.len() {
 				send_proxy
 					.send_event(FftEvent::PixelsReady {
 						pix: Arc::from(
-							render_spectrum(&fft_spectrum(&mic_buf[idx..idx + RESOLUTION]))
-								.into_boxed_slice(),
+							render_spectrum(&fft_spectrum(
+								&mut (&fft_buf[idx..idx + RESOLUTION]).to_vec(),
+							))
+							.into_boxed_slice(),
 						),
 					})
 					.expect("Failed to send event");
@@ -90,8 +99,8 @@ pub fn mic_into_pixels() {
 			}
 
 			if idx > RESOLUTION * 16 {
-				mic_buf.copy_within(idx.., 0);
-				mic_buf.truncate(mic_buf.len() - idx);
+				fft_buf.copy_within(idx.., 0);
+				fft_buf.truncate(fft_buf.len() - idx);
 				idx = 0;
 			}
 		}
@@ -134,17 +143,6 @@ fn show_mic(event_loop: EventLoop<FftEvent>) {
 			..
 		} = event
 		{
-			let frame = pixels.frame_mut();
-
-			for y in 0..height {
-				frame.copy_within(
-					y * width * RGBA + STEP * RGBA..(y + 1) * width * RGBA,
-					y * width * RGBA,
-				);
-			}
-
-			cols_drawn += STEP;
-
 			if pixels.render().is_err() {
 				elwt.exit();
 				return;
@@ -153,22 +151,14 @@ fn show_mic(event_loop: EventLoop<FftEvent>) {
 
 		if let Event::UserEvent(FftEvent::PixelsReady { pix }) = &event {
 			let frame = pixels.frame_mut();
-			cols_processed += 1;
-			if cols_processed < cols_drawn {
-				// fft lagging behind
-				return;
+			for y in 0..height {
+				frame.copy_within(
+					y * width * RGBA + 1 * RGBA..(y + 1) * width * RGBA,
+					y * width * RGBA,
+				);
 			}
 
-			let x = cols_processed - cols_drawn;
-
-			if x > width - 2 {
-				cols_drawn = cols_processed;
-				for y in 0..height {
-					frame[(y * width + x) * RGBA..(y * width + x + 1) * RGBA]
-						.copy_from_slice(&Rgba::BLACK.to_bytes())
-				}
-				return;
-			}
+			let x = width - 1;
 			for y in 0..height {
 				frame[(y * width + x) * RGBA..(y * width + x + 1) * RGBA]
 					.copy_from_slice(&pix[y].to_bytes())

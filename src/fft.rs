@@ -72,13 +72,12 @@ fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
 	v
 }
 
-pub fn fft_spectrum(v: &[Float]) -> Vec<Float> {
-	let mut fr = v.to_vec();
-	assert_eq!(RESOLUTION, fr.len());
+pub fn fft_spectrum(v: &mut [Float]) -> Vec<Float> {
+	assert_eq!(RESOLUTION, v.len());
 	assert!(RESOLUTION.is_power_of_two());
 	let mut fi = vec![0.0; RESOLUTION];
-	fft_inplace(&mut fr, &mut fi);
-	spectrum(&fr, &fi)
+	fft_inplace(v, &mut fi);
+	spectrum(&v, &fi)
 }
 
 /// Takes in a complex slice as real and imaginary parts, and

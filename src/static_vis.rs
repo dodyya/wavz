@@ -192,10 +192,10 @@ pub fn sliding_spectra(samples: Box<[i16]>, step_size: usize) -> BoxSlice2D<f32>
 		let mut fr = Box::new([0.0; RESOLUTION]);
 
 		for i in 0..RESOLUTION {
-			fr[i] = samples[i + start] as f32;
+			fr[i] = samples[i + start] as f32 / i16::MAX as f32 / 2.0;
 		}
 
-		out.row_mut(i).clone_from_slice(&fft_spectrum(fr.as_ref()));
+		out.row_mut(i).clone_from_slice(&fft_spectrum(fr.as_mut()));
 
 		start += step_size;
 	}

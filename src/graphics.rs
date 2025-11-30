@@ -7,11 +7,6 @@ const CLAMP_FACTOR: f32 = 1.0; //Twiddle this to make loud things look more unif
 
 // TODO: figure out if theres an easier way
 /// made because `f32` doesn't implement `Ord`, so can't just use the max or min methods
-fn extrema<'a>(v: impl Iterator<Item = &'a f32>) -> (f32, f32) {
-	v.fold((f32::MAX, f32::MIN), |(curr_min, curr_max), &x| {
-		(curr_min.min(x), curr_max.max(x))
-	})
-}
 
 pub fn gen_spectrogram(spectra: BoxSlice2D<Float>) -> BoxSlice2D<Rgba> {
 	let width = spectra.height; //TRANSPOSE!
@@ -35,12 +30,14 @@ pub fn gen_spectrogram(spectra: BoxSlice2D<Float>) -> BoxSlice2D<Rgba> {
 }
 
 pub fn render_spectrum(spectrum: &[f32]) -> Vec<Rgba> {
-	let (min, max) = extrema(spectrum.iter());
-	let range = CLAMP_FACTOR * (max - min);
+	// let (min, max) = extrema(spectrum.iter());
+	// dbg!(min, max);
+	// let range = CLAMP_FACTOR * (max - min);
+	const RANGE: f32 = 0.001;
 	spectrum
 		.iter()
 		.map(|&value| {
-			let normed_hue = ((value - min) / range).clamp(0.0, 1.0);
+			let normed_hue = (value / RANGE).clamp(0.0, 1.0);
 			if normed_hue > CUTOFF { Rgba::hue(normed_hue) } else { Rgba::BLACK }
 		})
 		.collect()

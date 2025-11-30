@@ -120,7 +120,9 @@ mod demos {
 					move |data: &[f32], _: &_| {
 						buf.extend_from_slice(data);
 						while buf.len() - start > RESOLUTION {
-							ascii_display(&fft_spectrum(&buf[start..start + RESOLUTION]));
+							ascii_display(&fft_spectrum(
+								&mut (&buf[start..start + RESOLUTION]).to_vec(),
+							));
 							start += step_size;
 						}
 						if start > 0 && (start > 4096 || start * 2 > buf.len()) {
@@ -155,8 +157,8 @@ fn main() {
 
 	// demos::mic_input();
 	// demos::wav_player(File::open(PATH).unwrap());
-	// demos::wav_visualizer(File::open(PATH).unwrap());
-	demos::mic_into_pixels();
+	demos::wav_visualizer(File::open(PATH).unwrap());
+	// demos::mic_into_pixels();
 }
 
 // struct PlayerState {
