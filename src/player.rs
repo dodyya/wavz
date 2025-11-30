@@ -102,21 +102,22 @@ pub fn mic_into_pixels() {
 				idx = 0;
 			}
 		}
-	})
-	.join()
-	.unwrap();
+	});
 
 	let _ = stream.play();
 	show_mic(event_loop);
 	drop(stream);
 }
 
-pub fn show_mic(event_loop: EventLoop<FftEvent>) {
+fn show_mic(event_loop: EventLoop<FftEvent>) {
 	use crate::fft::RESOLUTION;
 
 	let mut input = WinitInputHelper::new();
 	let height = RESOLUTION / 2;
 	let width = MAX_WIDTH;
+
+	let mut cols_drawn: usize = 0;
+	let mut cols_processed: usize = 0;
 
 	let window = {
 		let size = PhysicalSize::new((width * PIXEL_SCALE) as u32, (height * PIXEL_SCALE) as u32);
@@ -135,6 +136,7 @@ pub fn show_mic(event_loop: EventLoop<FftEvent>) {
 		Pixels::new(width as u32, height as u32, surface_texture).unwrap()
 	};
 
+	const STEP: usize = 1;
 	let _ = event_loop.run(|event, elwt| {
 		if let Event::WindowEvent {
 			event: WindowEvent::RedrawRequested,
@@ -142,7 +144,6 @@ pub fn show_mic(event_loop: EventLoop<FftEvent>) {
 		} = event
 		{
 			let frame = pixels.frame_mut();
-			const STEP: usize = 5;
 
 			for y in 0..height {
 				frame.copy_within(
@@ -151,6 +152,8 @@ pub fn show_mic(event_loop: EventLoop<FftEvent>) {
 				);
 			}
 
+			cols_drawn += STEP;
+
 			if pixels.render().is_err() {
 				elwt.exit();
 				return;
@@ -158,8 +161,17 @@ pub fn show_mic(event_loop: EventLoop<FftEvent>) {
 		}
 
 		if let Event::UserEvent(FftEvent::PixelsReady { pix }) = &event {
-			println!("Event received.");
-			println!("{}", pix.len());
+			let frame = pixels.frame_mut();
+			cols_processed += 1;
+			if cols_processed < cols_drawn {
+				// fft lagging behind
+				return;
+			}
+			let x = cols_processed - cols_drawn;
+			for y in 0..height {
+				frame[(y * width + x) * RGBA..(y * width + x + 1) * RGBA]
+					.copy_from_slice(&pix[y].to_bytes())
+			}
 		}
 
 		if input.update(&event) {

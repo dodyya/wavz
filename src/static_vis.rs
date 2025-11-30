@@ -1,7 +1,4 @@
 use std::fmt::Debug;
-use std::sync::mpsc::Receiver;
-use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::{Duration, Instant};
 
 use bytemuck::cast_slice;
@@ -18,7 +15,6 @@ use winit_input_helper::WinitInputHelper;
 use crate::fft::BoxSlice2D;
 use crate::fft::RESOLUTION;
 use crate::fft::fft_spectrum;
-use crate::graphics::render_spectrum;
 use crate::rgba::Rgba;
 
 // TODO: lower the scope of some of these constants (move them into functions or structs if not used everywhere)

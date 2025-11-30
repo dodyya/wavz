@@ -40,6 +40,9 @@ impl Rgba {
 	pub fn hue(h: f32) -> Self {
 		Self::hsv(360.0 * h, 1.0, 1.0)
 	}
+	pub fn to_bytes(&self) -> [u8; 4] {
+		[self.r, self.g, self.b, self.a]
+	}
 }
 
 impl Default for Rgba {
