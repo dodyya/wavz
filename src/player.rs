@@ -108,7 +108,7 @@ fn show_mic(event_loop: EventLoop<FftEvent>) {
 	let width = MAX_WIDTH;
 
 	let mut cols_drawn: usize = 0;
-	let mut cols_processed: usize = 0;
+	let mut cols_processed: usize = width - 500;
 
 	let window = {
 		let size = PhysicalSize::new((width * PIXEL_SCALE) as u32, (height * PIXEL_SCALE) as u32);
@@ -158,7 +158,17 @@ fn show_mic(event_loop: EventLoop<FftEvent>) {
 				// fft lagging behind
 				return;
 			}
+
 			let x = cols_processed - cols_drawn;
+
+			if x > width - 2 {
+				cols_drawn = cols_processed;
+				for y in 0..height {
+					frame[(y * width + x) * RGBA..(y * width + x + 1) * RGBA]
+						.copy_from_slice(&Rgba::BLACK.to_bytes())
+				}
+				return;
+			}
 			for y in 0..height {
 				frame[(y * width + x) * RGBA..(y * width + x + 1) * RGBA]
 					.copy_from_slice(&pix[y].to_bytes())
