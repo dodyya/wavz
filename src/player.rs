@@ -187,17 +187,17 @@ pub fn show_spectrogram(spectra: BoxSlice2D<Rgba>, ffts_per_second: u32) {
 	});
 }
 
-pub fn fft_maker(
-	mic_buf: &Arc<Mutex<HeapRb<f32>>>,
-	fft_buf: &Arc<Mutex<HeapRb<Vec<f32>>>>,
-	step_size: usize,
-) {
-	let mut fr = vec![0.0; RESOLUTION];
-	mic_buf.lock().unwrap().peek_slice(&mut fr);
-	fft_buf.lock().unwrap().push_overwrite(fft_spectrum(fr));
+// pub fn fft_maker(
+// 	mic_buf: &Arc<Mutex<HeapRb<f32>>>,
+// 	fft_buf: &Arc<Mutex<HeapRb<Vec<f32>>>>,
+// 	step_size: usize,
+// ) {
+// 	let mut fr = vec![0.0; RESOLUTION];
+// 	mic_buf.lock().unwrap().peek_slice(&mut fr);
+// 	fft_buf.lock().unwrap().push_overwrite(fft_spectrum(fr));
 
-	mic_buf.lock().unwrap().pop_slice(&mut vec![0.0; step_size]);
-}
+// 	mic_buf.lock().unwrap().pop_slice(&mut vec![0.0; step_size]);
+// }
 
 pub fn show_mic(mic: Arc<Mutex<HeapRb<f32>>>, step_size: usize) {
 	use crate::fft::RESOLUTION;
@@ -223,16 +223,6 @@ pub fn show_mic(mic: Arc<Mutex<HeapRb<f32>>>, step_size: usize) {
 		Pixels::new(width as u32, height as u32, surface_texture).unwrap()
 	};
 
-	let to_draw: Arc<Mutex<HeapRb<Vec<f32>>>> = Arc::new(Mutex::new(HeapRb::new(200)));
-	let to_draw_clone = to_draw.clone();
-
-	thread::spawn(move || {
-		loop {
-			fft_maker(&mic, &to_draw_clone, step_size);
-			thread::sleep(Duration::from_micros(1000))
-		}
-	});
-
 	let _ = event_loop.run(|event, elwt| {
 		if let Event::WindowEvent {
 			event: WindowEvent::RedrawRequested,
@@ -250,14 +240,19 @@ pub fn show_mic(mic: Arc<Mutex<HeapRb<f32>>>, step_size: usize) {
 			}
 
 			for i in 0..STEP {
-				let spectrum = to_draw.lock().unwrap().try_pop().unwrap();
-				let vline = render_spectrum(&spectrum);
+				let mut fr = vec![0.0; RESOLUTION];
+				mic.lock().unwrap().peek_slice(&mut fr);
+				// mic.lock().unwrap().pop_slice(&mut vec![0.0; step_size]);
+				let vline = render_spectrum(&fft_spectrum(fr));
+
 				for y in 0..height {
 					frame[((y + 1) * width - STEP + i) * RGBA
 						..((y + 1) * width - STEP + i + 1) * RGBA]
 						.copy_from_slice(cast_slice(&[vline[y]]));
 				}
 			}
+
+			println!("Graphics: {:?}", thread::current().id());
 
 			if pixels.render().is_err() {
 				elwt.exit();

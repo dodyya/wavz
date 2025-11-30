@@ -7,7 +7,7 @@ mod demos {
 	use std::sync::Mutex;
 	use std::sync::atomic::{AtomicBool, Ordering};
 	use std::thread;
-	use std::time::Duration;
+	use std::time::{Duration, Instant};
 
 	use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 	use cpal::{BufferSize, SampleRate, StreamConfig};
@@ -163,6 +163,8 @@ mod demos {
 
 		let mic = Arc::new(Mutex::new(HeapRb::new(1 << 13)));
 		let mic_clone = mic.clone();
+		let start = Instant::now();
+		let mut count = 0usize;
 
 		let stream = match config.sample_format() {
 			cpal::SampleFormat::F32 => device
@@ -170,6 +172,7 @@ mod demos {
 					&config.into(),
 					move |data: &[f32], _: &_| {
 						mic.lock().unwrap().push_slice_overwrite(data);
+						println!("Mic: {:?}", thread::current().id());
 					},
 					err_fn,
 					None,
@@ -195,8 +198,8 @@ fn main() {
 
 	// demos::mic_input();
 	// demos::wav_player(File::open(PATH).unwrap());
-	demos::wav_visualizer(File::open(PATH).unwrap());
-	// demos::mic_into_pixels();
+	// demos::wav_visualizer(File::open(PATH).unwrap());
+	demos::mic_into_pixels();
 }
 
 // struct PlayerState {

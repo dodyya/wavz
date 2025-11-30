@@ -72,7 +72,8 @@ fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
 	v
 }
 
-pub fn fft_spectrum(mut fr: Vec<Float>) -> Vec<Float> {
+pub fn fft_spectrum(v: Vec<Float>) -> Vec<Float> {
+	let mut fr = v.clone();
 	assert_eq!(RESOLUTION, fr.len());
 	assert!(RESOLUTION.is_power_of_two());
 	let mut fi = vec![0.0; RESOLUTION];
