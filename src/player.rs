@@ -49,7 +49,6 @@ pub fn mic_into_pixels() {
 				&config.into(),
 				move |data: &[f32], _: &_| {
 					mic_prod.push_slice(data);
-					// dbg!(extrema(data.iter()));
 				},
 				err_fn,
 				None,
@@ -66,8 +65,8 @@ pub fn mic_into_pixels() {
 
 	let send_proxy = event_loop.create_proxy();
 
-	fn mic_gain(x: &f32) -> f32 {
-		*x
+	fn mic_gain(x: f32) -> f32 {
+		x * 80.0f32
 	}
 
 	thread::spawn(move || {
@@ -79,24 +78,21 @@ pub fn mic_into_pixels() {
 			let n = mic_cons.pop_slice(&mut incoming);
 
 			if n == 0 {
-				// thread::sleep(Duration::from_micros(200));
 				continue;
 			}
 
 			fft_buf.extend_from_slice(&incoming[..n]);
 
 			while idx + WINDOW_SIZE < fft_buf.len() {
-				send_proxy
-					.send_event(FftEvent::PixelsReady {
-						pix: Arc::from(
-							render_spectrum(&fft_spectrum(
-								&mut (fft_buf[idx..idx + WINDOW_SIZE].iter().map(|x| mic_gain(x)))
-									.collect::<Vec<f32>>(),
-							))
-							.into_boxed_slice(),
-						),
-					})
-					.expect("Failed to send event");
+				let _ = send_proxy.send_event(FftEvent::PixelsReady {
+					pix: Arc::from(
+						render_spectrum(&fft_spectrum(
+							&mut (fft_buf[idx..idx + WINDOW_SIZE].iter().map(|x| mic_gain(*x)))
+								.collect::<Vec<f32>>(),
+						))
+						.into_boxed_slice(),
+					),
+				});
 				idx += STEP_SIZE;
 			}
 

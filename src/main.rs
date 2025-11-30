@@ -7,7 +7,7 @@ mod demos {
 	use std::time::Duration;
 
 	use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-	use cpal::{BufferSize, SampleRate, StreamConfig};
+	use cpal::{BufferSize, SampleFormat, SampleRate, StreamConfig};
 	use wavez::fft::fft_spectrum;
 	use wavez::graphics::gen_spectrogram;
 	use wavez::parser::RiffWavePcm;
@@ -159,10 +159,10 @@ fn main() {
 
 	const PATH: &str = "test_files/ostavi.wav";
 
-	demos::mic_input();
+	// demos::mic_input();
 	// demos::wav_player(File::open(PATH).unwrap());
 	// demos::wav_visualizer(File::open(PATH).unwrap());
-	// demos::mic_into_pixels();
+	demos::mic_into_pixels();
 }
 
 // struct PlayerState {

@@ -27,9 +27,6 @@ pub fn gen_spectrogram(spectra: BoxSlice2D<Float>) -> BoxSlice2D<Rgba> {
 }
 
 pub fn render_spectrum(spectrum: &[f32]) -> Vec<Rgba> {
-	// let (min, max) = extrema(spectrum.iter());
-	// dbg!(min, max);
-	// let range = CLAMP_FACTOR * (max - min);
 	const RANGE: f32 = 0.005;
 	const CUTOFF: f32 = 0.15; // Visual cutoff for what is black
 	spectrum

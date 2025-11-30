@@ -72,7 +72,7 @@ fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
 
 fn spectrum_into(out: &mut [Float], fr: &[Float], fi: &[Float]) {
 	for i in 0..WINDOW_SIZE / 2 {
-		out[i] = (fr[i] * fr[i] + fi[i] * fi[i]).sqrt();
+		out[i] = fr[i].hypot(fi[i]);
 	}
 }
 
