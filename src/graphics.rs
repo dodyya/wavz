@@ -17,7 +17,7 @@ fn extrema<'a>(v: impl Iterator<Item = &'a f32>) -> (f32, f32) {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, NoUninit)]
+#[derive(Debug, Clone, Copy, NoUninit, Eq, PartialEq)]
 pub struct Rgba {
 	r: u8,
 	g: u8,
@@ -26,8 +26,8 @@ pub struct Rgba {
 }
 
 impl Rgba {
-	const BLACK: Rgba = Rgba { r: 0, g: 0, b: 0, a: 255 };
-	const WHITE: Rgba = Rgba { r: 255, g: 255, b: 255, a: 255 };
+	pub const BLACK: Rgba = Rgba { r: 0, g: 0, b: 0, a: 255 };
+	pub const WHITE: Rgba = Rgba { r: 255, g: 255, b: 255, a: 255 };
 
 	fn rgb(r: u8, g: u8, b: u8) -> Self {
 		Rgba { r, g, b, a: 255 }
@@ -62,9 +62,6 @@ impl Default for Rgba {
 	}
 }
 
-// TODO: switch away from nested vec arguments across the codebase. This could be moving
-// towards boxed slices which can be converted into &mut [T] to take &mut [&mut T] arguments,
-// or it could be moving to a custom BoxSlice2d and Slice2d struct (I think this is likely to work out best)
 pub fn gen_spectrogram(spectra: BoxSlice2D<Float>) -> BoxSlice2D<Rgba> {
 	let width = spectra.height; //TRANSPOSE!
 	let height = spectra.width;
@@ -91,4 +88,16 @@ pub fn gen_spectrogram(spectra: BoxSlice2D<Float>) -> BoxSlice2D<Rgba> {
 		height,
 		data: img.into_boxed_slice(),
 	}
+}
+
+pub fn render_spectrum(spectrum: &Vec<f32>) -> Vec<Rgba> {
+	let (min, max) = extrema(spectrum.iter());
+	let range = CLAMP_FACTOR * (max - min);
+	spectrum
+		.iter()
+		.map(|&value| {
+			let normed_hue = ((value - min) / range).clamp(0.0, 1.0);
+			if normed_hue > CUTOFF { Rgba::hue(normed_hue) } else { Rgba::BLACK }
+		})
+		.collect()
 }

@@ -1,11 +1,12 @@
-use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use bytemuck::cast_slice;
 
 use pixels::{Pixels, SurfaceTexture};
+use ringbuf::{HeapRb, traits::Consumer as _, traits::RingBuffer as _};
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
@@ -15,8 +16,9 @@ use winit_input_helper::WinitInputHelper;
 
 use crate::fft::BoxSlice2D;
 use crate::fft::RESOLUTION;
-use crate::fft::mic_spectra;
-use crate::graphics::{Rgba, gen_spectrogram};
+use crate::fft::fft_spectrum;
+use crate::graphics::Rgba;
+use crate::graphics::render_spectrum;
 
 // TODO: lower the scope of some of these constants (move them into functions or structs if not used everywhere)
 // TODO: Allow thin-screen playback by revamping playback
@@ -184,40 +186,24 @@ pub fn show_spectrogram(spectra: BoxSlice2D<Rgba>, ffts_per_second: u32) {
 		}
 	});
 }
-pub struct Buffer<T> {
-	pub idx: usize,
-	pub buf: Vec<T>,
-}
 
-pub fn compute_ffts(
-	mic_buf: Arc<Mutex<Buffer<f32>>>,
+pub fn fft_maker(
+	mic_buf: &Arc<Mutex<HeapRb<f32>>>,
+	fft_buf: &Arc<Mutex<HeapRb<Vec<f32>>>>,
 	step_size: usize,
-) -> Option<BoxSlice2D<Rgba>> {
-	const FLUSH_SIZE: usize = 1 << 14;
-	let idx = mic_buf.lock().unwrap().idx;
-	let available_length = mic_buf.lock().unwrap().buf.len() - idx;
-	if available_length < RESOLUTION * 6 {
-		return None;
-	}
+) {
+	let mut fr = vec![0.0; RESOLUTION];
+	let mut fi = vec![0.0; RESOLUTION];
+	mic_buf.lock().unwrap().peek_slice(&mut fr);
+	fft_buf
+		.lock()
+		.unwrap()
+		.push_overwrite(fft_spectrum(&mut fr, &mut fi));
 
-	let vslice = gen_spectrogram(mic_spectra(
-		mic_buf.lock().unwrap().buf[idx..]
-			.to_owned()
-			.into_boxed_slice(),
-		step_size,
-	));
-
-	mic_buf.lock().unwrap().idx = available_length - RESOLUTION + step_size;
-
-	if mic_buf.lock().unwrap().idx > FLUSH_SIZE {
-		mic_buf.lock().unwrap().idx -= FLUSH_SIZE;
-		mic_buf.lock().unwrap().buf.drain(..FLUSH_SIZE);
-	}
-
-	return Some(vslice);
+	mic_buf.lock().unwrap().pop_slice(&mut vec![0.0; step_size]);
 }
 
-pub fn show_mic(mic: Arc<Mutex<Buffer<f32>>>, step_size: usize) {
+pub fn show_mic(mic: Arc<Mutex<HeapRb<f32>>>, step_size: usize) {
 	use crate::fft::RESOLUTION;
 	let event_loop = EventLoop::new().unwrap();
 	let mut input = WinitInputHelper::new();
@@ -241,11 +227,15 @@ pub fn show_mic(mic: Arc<Mutex<Buffer<f32>>>, step_size: usize) {
 		Pixels::new(width as u32, height as u32, surface_texture).unwrap()
 	};
 
-	let mut to_draw: VecDeque<BoxSlice2D<Rgba>> = VecDeque::new();
-	const X_STEP: usize = 5;
+	let to_draw: Arc<Mutex<HeapRb<Vec<f32>>>> = Arc::new(Mutex::new(HeapRb::new(200)));
+	let to_draw_clone = to_draw.clone();
 
-	let mut vslice_x = 0;
-	let mut current_vslice: Option<BoxSlice2D<Rgba>> = None;
+	thread::spawn(move || {
+		loop {
+			fft_maker(&mic, &to_draw_clone, step_size);
+			thread::sleep(Duration::from_micros(1000))
+		}
+	});
 
 	let _ = event_loop.run(|event, elwt| {
 		if let Event::WindowEvent {
@@ -254,38 +244,22 @@ pub fn show_mic(mic: Arc<Mutex<Buffer<f32>>>, step_size: usize) {
 		} = event
 		{
 			let frame = pixels.frame_mut();
+			const STEP: usize = 5;
 
-			if let Some(vslice) = compute_ffts(mic.clone(), step_size) {
-				to_draw.push_back(vslice);
+			for y in 0..height {
+				frame.copy_within(
+					y * width * RGBA + STEP * RGBA..(y + 1) * width * RGBA,
+					y * width * RGBA,
+				);
 			}
 
-			if current_vslice.is_none() {
-				current_vslice = to_draw.pop_front();
-				vslice_x = 0;
-			}
-
-			if let Some(vslice) = &current_vslice {
-				if vslice_x + X_STEP <= vslice.width {
-					for y in 0..height {
-						frame.copy_within(
-							RGBA * ((width) * y + X_STEP)..RGBA * (width) * (y + 1),
-							RGBA * width * y,
-						);
-
-						frame[RGBA * width * (y + 1) - X_STEP * RGBA..RGBA * width * (y + 1)]
-							.copy_from_slice(cast_slice(
-								&vslice.row(y)[vslice_x..vslice_x + X_STEP],
-							));
-					}
-					vslice_x += X_STEP;
-				} else {
-					current_vslice = None;
-					// for y in 0..height {
-					// 	frame.copy_within(
-					// 		RGBA * ((width) * y + X_STEP)..RGBA * (width) * (y + 1),
-					// 		0,
-					// 	);
-					// }
+			for i in 0..STEP {
+				let spectrum = to_draw.lock().unwrap().try_pop().unwrap();
+				let vline = render_spectrum(&spectrum);
+				for y in 0..height {
+					frame[((y + 1) * width - STEP + i) * RGBA
+						..((y + 1) * width - STEP + i + 1) * RGBA]
+						.copy_from_slice(cast_slice(&[vline[y]]));
 				}
 			}
 

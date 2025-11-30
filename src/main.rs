@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::io::{Read, Seek};
 
 mod demos {
@@ -10,7 +11,9 @@ mod demos {
 
 	use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 	use cpal::{BufferSize, SampleRate, StreamConfig};
-	use wavez::fft;
+	use ringbuf::traits::RingBuffer;
+	use wavez::fft::fft_spectrum;
+	use wavez::fft::sliding_spectra;
 	use wavez::graphics::gen_spectrogram;
 	use wavez::parser::RiffWavePcm;
 	use wavez::player::show_spectrogram;
@@ -23,7 +26,7 @@ mod demos {
 		} = RiffWavePcm::parse(data).unwrap();
 
 		let step_size = 1 << 8;
-		let spectra = gen_spectrogram(fft::sliding_spectra(samples, step_size));
+		let spectra = gen_spectrogram(sliding_spectra(samples, step_size));
 		show_spectrogram(spectra, smps / step_size as u32);
 	}
 
@@ -80,28 +83,27 @@ mod demos {
 		while !is_done.load(Ordering::Relaxed) {}
 	}
 
-	fn ascii_display(spectrum: &[f32]) {
-		let mut buf = String::new();
-		for x in spectrum.chunks_exact(14) {
-			let max_amp = x.iter().fold(0.0f32, |acc, &x| acc.max(x));
-			buf.push_str(match max_amp {
-				(..0.0001) => " ",
-				(..0.0002) => ".",
-				(..0.0004) => "+",
-				(..0.0006) => "*",
-				(..0.0010) => "#",
-				(..0.0020) => "$",
-				_ => "@",
-			});
-		}
-		println!("{buf}");
-	}
-
 	#[allow(unused)]
 	pub fn mic_input() {
 		use wavez::fft::RESOLUTION;
 		use wavez::fft::fft_inplace;
-		use wavez::fft::spectrum;
+		fn ascii_display(spectrum: &[f32]) {
+			let mut buf = String::new();
+			for x in spectrum.chunks_exact(14) {
+				let max_amp = x.iter().fold(0.0f32, |acc, &x| acc.max(x));
+				buf.push_str(match max_amp {
+					(..0.0001) => " ",
+					(..0.0002) => ".",
+					(..0.0004) => "+",
+					(..0.0006) => "*",
+					(..0.0010) => "#",
+					(..0.0020) => "$",
+					_ => "@",
+				});
+			}
+			println!("{buf}");
+		}
+
 		let host = cpal::default_host();
 
 		let device = host.default_input_device().unwrap();
@@ -126,8 +128,7 @@ mod demos {
 							let end = start + RESOLUTION;
 							let mut vr = buf[start..end].to_vec();
 							let mut vi = vec![0.0; RESOLUTION];
-							fft_inplace(&mut vr, &mut vi);
-							ascii_display(&spectrum(&vr, &vi));
+							ascii_display(&fft_spectrum(&mut vr, &mut vi));
 							start += step_size;
 						}
 						if start > 0 && (start > 4096 || start * 2 > buf.len()) {
@@ -150,9 +151,10 @@ mod demos {
 	}
 
 	pub fn mic_into_pixels() {
-		use wavez::player::Buffer;
 		use wavez::player::show_mic;
 		let host = cpal::default_host();
+		use ringbuf::HeapRb;
+		use ringbuf::traits::{Consumer as _, Producer as _};
 
 		let device = host.default_input_device().unwrap();
 
@@ -161,7 +163,8 @@ mod demos {
 		let err_fn = move |err| {
 			eprintln!("an error occurred on stream: {err}");
 		};
-		let mic = Arc::new(Mutex::new(Buffer::<f32> { buf: Vec::new(), idx: 0 }));
+
+		let mic = Arc::new(Mutex::new(HeapRb::new(1 << 13)));
 		let mic_clone = mic.clone();
 
 		let stream = match config.sample_format() {
@@ -169,7 +172,7 @@ mod demos {
 				.build_input_stream(
 					&config.into(),
 					move |data: &[f32], _: &_| {
-						mic.lock().unwrap().buf.extend_from_slice(data);
+						mic.lock().unwrap().push_slice_overwrite(data);
 					},
 					err_fn,
 					None,

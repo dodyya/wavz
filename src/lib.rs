@@ -129,9 +129,7 @@ mod tests {
 			im.push(0 as Float);
 		}
 
-		fft_inplace(&mut re, &mut im);
-
-		let amplitude = spectrum(&re, &im);
+		let amplitude = fft_spectrum(&mut re, &mut im);
 
 		let mut argsort = (0..amplitude.len()).collect::<Vec<usize>>();
 		argsort.sort_by(|&a, &b| amplitude[b].partial_cmp(&amplitude[a]).unwrap()); //Argsort in decreasing order

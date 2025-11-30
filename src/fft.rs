@@ -64,7 +64,7 @@ pub(crate) static SINE: LazyLock<Vec<Float>> = LazyLock::new(|| {
 });
 
 /// Takes an fft result and returns the magnitude vector of the Nyquist range
-pub fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
+fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
 	assert_eq!(RESOLUTION, fr.len());
 	assert!(RESOLUTION.is_power_of_two() && fi.len() == RESOLUTION);
 
@@ -73,6 +73,11 @@ pub fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
 		v.push((fr[i] * fr[i] + fi[i] * fi[i]).sqrt());
 	}
 	v
+}
+
+pub fn fft_spectrum(fr: &mut [Float], fi: &mut [Float]) -> Vec<Float> {
+	fft_inplace(fr, fi);
+	spectrum(fr, fi)
 }
 
 /// Takes in a complex slice as real and imaginary parts, and
@@ -144,9 +149,8 @@ pub fn sliding_spectra(samples: Box<[i16]>, step_size: usize) -> BoxSlice2D<Floa
 			fr[i] = samples[i + start] as Float;
 		}
 
-		fft_inplace(fr.as_mut(), fi.as_mut());
 		out.row_mut(i)
-			.clone_from_slice(&spectrum(fr.as_slice(), fi.as_slice()));
+			.clone_from_slice(&fft_spectrum(fr.as_mut(), fi.as_mut()));
 
 		start += step_size;
 	}
