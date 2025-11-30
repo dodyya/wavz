@@ -116,9 +116,6 @@ fn show_mic(event_loop: EventLoop<FftEvent>) {
 	let height = RESOLUTION / 2;
 	let width = MAX_WIDTH;
 
-	let mut cols_drawn: usize = 0;
-	let mut cols_processed: usize = width - 500;
-
 	let window = {
 		let size = PhysicalSize::new((width * PIXEL_SCALE) as u32, (height * PIXEL_SCALE) as u32);
 		WindowBuilder::new()
@@ -136,7 +133,6 @@ fn show_mic(event_loop: EventLoop<FftEvent>) {
 		Pixels::new(width as u32, height as u32, surface_texture).unwrap()
 	};
 
-	const STEP: usize = 1;
 	let _ = event_loop.run(|event, elwt| {
 		if let Event::WindowEvent {
 			event: WindowEvent::RedrawRequested,

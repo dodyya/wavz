@@ -157,8 +157,8 @@ fn main() {
 
 	// demos::mic_input();
 	// demos::wav_player(File::open(PATH).unwrap());
-	demos::wav_visualizer(File::open(PATH).unwrap());
-	// demos::mic_into_pixels();
+	// demos::wav_visualizer(File::open(PATH).unwrap());
+	demos::mic_into_pixels();
 }
 
 // struct PlayerState {

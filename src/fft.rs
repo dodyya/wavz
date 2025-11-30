@@ -66,18 +66,27 @@ pub(crate) static SINE: LazyLock<Vec<Float>> = LazyLock::new(|| {
 /// Takes an fft result and returns the magnitude vector of the Nyquist range
 fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
 	let mut v = Vec::with_capacity(RESOLUTION / 2);
-	for i in 0..RESOLUTION / 2 {
-		v.push((fr[i] * fr[i] + fi[i] * fi[i]).sqrt());
-	}
+	spectrum_into(&mut v, fr, fi);
 	v
 }
 
-pub fn fft_spectrum(v: &mut [Float]) -> Vec<Float> {
-	assert_eq!(RESOLUTION, v.len());
-	assert!(RESOLUTION.is_power_of_two());
+fn spectrum_into(out: &mut [Float], fr: &[Float], fi: &[Float]) {
+	for i in 0..RESOLUTION / 2 {
+		out[i] = (fr[i] * fr[i] + fi[i] * fi[i]).sqrt();
+	}
+}
+
+pub fn fft_spectrum(real: &mut [Float]) -> Vec<Float> {
+	// assert_eq!(RESOLUTION, v.len());
+	let mut imag = vec![0.0; RESOLUTION];
+	fft_inplace(real, &mut imag);
+	spectrum(&real, &imag)
+}
+
+pub fn fft_spectrum_into(out: &mut [Float], input: &mut [Float]) {
 	let mut fi = vec![0.0; RESOLUTION];
-	fft_inplace(v, &mut fi);
-	spectrum(&v, &fi)
+	fft_inplace(input, &mut fi);
+	spectrum_into(out, input, &fi);
 }
 
 /// Takes in a complex slice as real and imaginary parts, and
