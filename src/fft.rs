@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-pub const RESOLUTION: usize = 1 << 12; // 4096
+pub const WINDOW_SIZE: usize = 1 << 12; // 4096
 
 struct Cplx<T> {
 	pub re: T,
@@ -56,35 +56,35 @@ impl<T: Default + Copy> BoxSlice2D<T> {
 pub type Float = f32;
 
 pub(crate) static SINE: LazyLock<Vec<Float>> = LazyLock::new(|| {
-	let mut v = Vec::with_capacity(RESOLUTION);
-	for i in 0..RESOLUTION {
-		v.push((i as Float * std::f32::consts::TAU / RESOLUTION as Float).sin());
+	let mut v = Vec::with_capacity(WINDOW_SIZE);
+	for i in 0..WINDOW_SIZE {
+		v.push((i as Float * std::f32::consts::TAU / WINDOW_SIZE as Float).sin());
 	}
 	v
 });
 
 /// Takes an fft result and returns the magnitude vector of the Nyquist range
 fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
-	let mut v = Vec::with_capacity(RESOLUTION / 2);
+	let mut v = vec![0.0; WINDOW_SIZE / 2];
 	spectrum_into(&mut v, fr, fi);
 	v
 }
 
 fn spectrum_into(out: &mut [Float], fr: &[Float], fi: &[Float]) {
-	for i in 0..RESOLUTION / 2 {
+	for i in 0..WINDOW_SIZE / 2 {
 		out[i] = (fr[i] * fr[i] + fi[i] * fi[i]).sqrt();
 	}
 }
 
 pub fn fft_spectrum(real: &mut [Float]) -> Vec<Float> {
 	// assert_eq!(RESOLUTION, v.len());
-	let mut imag = vec![0.0; RESOLUTION];
+	let mut imag = vec![0.0; WINDOW_SIZE];
 	fft_inplace(real, &mut imag);
 	spectrum(&real, &imag)
 }
 
 pub fn fft_spectrum_into(out: &mut [Float], input: &mut [Float]) {
-	let mut fi = vec![0.0; RESOLUTION];
+	let mut fi = vec![0.0; WINDOW_SIZE];
 	fft_inplace(input, &mut fi);
 	spectrum_into(out, input, &fi);
 }
@@ -92,15 +92,15 @@ pub fn fft_spectrum_into(out: &mut [Float], input: &mut [Float]) {
 /// Takes in a complex slice as real and imaginary parts, and
 /// performs the FFT in-place. Magic.
 pub(crate) fn fft_inplace(fr: &mut [Float], fi: &mut [Float]) {
-	assert_eq!(RESOLUTION, fr.len());
-	assert!(RESOLUTION.is_power_of_two() && fi.len() == RESOLUTION);
+	assert_eq!(WINDOW_SIZE, fr.len());
+	assert!(WINDOW_SIZE.is_power_of_two() && fi.len() == WINDOW_SIZE);
 
-	let bits = RESOLUTION.ilog2();
+	let bits = WINDOW_SIZE.ilog2();
 
 	let num_samples: usize = fr.len();
 	let log2_num_samples = num_samples.ilog2() as usize;
 
-	for m in 1..RESOLUTION - 1 {
+	for m in 1..WINDOW_SIZE - 1 {
 		let mr = m.reverse_bits() >> (usize::BITS - bits);
 		if mr > m {
 			fr.swap(m, mr);

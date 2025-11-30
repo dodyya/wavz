@@ -22,7 +22,13 @@ mod demos {
 		} = RiffWavePcm::parse(data).unwrap();
 
 		let step_size = 1 << 8;
-		let spectra = gen_spectrogram(sliding_spectra(samples, step_size));
+		let spectra = gen_spectrogram(sliding_spectra(
+			samples
+				.into_iter()
+				.map(|x| x as f32 / i16::MAX as f32)
+				.collect(),
+			step_size,
+		));
 		show_spectrogram(spectra, smps / step_size as u32);
 	}
 
@@ -81,7 +87,7 @@ mod demos {
 
 	#[allow(unused)]
 	pub fn mic_input() {
-		use wavez::fft::RESOLUTION;
+		use wavez::fft::WINDOW_SIZE;
 		fn ascii_display(spectrum: &[f32]) {
 			let mut buf = String::new();
 			for x in spectrum.chunks_exact(14) {
@@ -119,9 +125,9 @@ mod demos {
 					&config.into(),
 					move |data: &[f32], _: &_| {
 						buf.extend_from_slice(data);
-						while buf.len() - start > RESOLUTION {
+						while buf.len() - start > WINDOW_SIZE {
 							ascii_display(&fft_spectrum(
-								&mut (&buf[start..start + RESOLUTION]).to_vec(),
+								&mut (&buf[start..start + WINDOW_SIZE]).to_vec(),
 							));
 							start += step_size;
 						}
@@ -153,12 +159,12 @@ fn main() {
 	#[allow(unused)]
 	use std::fs::File;
 
-	const PATH: &str = "test_files/mariah.wav";
+	const PATH: &str = "test_files/ostavi.wav";
 
 	// demos::mic_input();
 	// demos::wav_player(File::open(PATH).unwrap());
-	// demos::wav_visualizer(File::open(PATH).unwrap());
-	demos::mic_into_pixels();
+	demos::wav_visualizer(File::open(PATH).unwrap());
+	// demos::mic_into_pixels();
 }
 
 // struct PlayerState {

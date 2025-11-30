@@ -1,4 +1,4 @@
-use crate::fft::RESOLUTION;
+use crate::fft::WINDOW_SIZE;
 use std::sync::Arc;
 use std::thread;
 
@@ -35,7 +35,7 @@ pub fn mic_into_pixels() {
 		eprintln!("an error occurred on stream: {err}");
 	};
 
-	let (mut mic_prod, mut mic_cons) = HeapRb::<f32>::new(RESOLUTION * 2).split();
+	let (mut mic_prod, mut mic_cons) = HeapRb::<f32>::new(WINDOW_SIZE * 2).split();
 
 	// fn extrema<'a>(v: impl Iterator<Item = &'a f32>) -> (f32, f32) {
 	// 	v.fold((f32::MAX, f32::MIN), |(curr_min, curr_max), &x| {
@@ -66,27 +66,32 @@ pub fn mic_into_pixels() {
 
 	let send_proxy = event_loop.create_proxy();
 
+	fn mic_gain(x: &f32) -> f32 {
+		*x
+	}
+
 	thread::spawn(move || {
-		let mut fft_buf = Vec::<f32>::with_capacity(RESOLUTION * 20);
-		let mut incoming = vec![0.0f32; RESOLUTION];
+		let mut fft_buf = Vec::<f32>::with_capacity(WINDOW_SIZE * 20);
+		let mut incoming = vec![0.0f32; WINDOW_SIZE];
 		let mut idx: usize = 0;
 
 		loop {
 			let n = mic_cons.pop_slice(&mut incoming);
 
 			if n == 0 {
-				thread::sleep(Duration::from_micros(200));
+				// thread::sleep(Duration::from_micros(200));
 				continue;
 			}
 
 			fft_buf.extend_from_slice(&incoming[..n]);
 
-			while idx + RESOLUTION < fft_buf.len() {
+			while idx + WINDOW_SIZE < fft_buf.len() {
 				send_proxy
 					.send_event(FftEvent::PixelsReady {
 						pix: Arc::from(
 							render_spectrum(&fft_spectrum(
-								&mut (&fft_buf[idx..idx + RESOLUTION]).to_vec(),
+								&mut (fft_buf[idx..idx + WINDOW_SIZE].iter().map(|x| mic_gain(x)))
+									.collect::<Vec<f32>>(),
 							))
 							.into_boxed_slice(),
 						),
@@ -95,7 +100,7 @@ pub fn mic_into_pixels() {
 				idx += STEP_SIZE;
 			}
 
-			if idx > RESOLUTION * 16 {
+			if idx > WINDOW_SIZE * 16 {
 				fft_buf.copy_within(idx.., 0);
 				fft_buf.truncate(fft_buf.len() - idx);
 				idx = 0;
@@ -110,7 +115,7 @@ pub fn mic_into_pixels() {
 
 fn show_mic(event_loop: EventLoop<FftEvent>) {
 	let mut input = WinitInputHelper::new();
-	let height = RESOLUTION / 2;
+	let height = WINDOW_SIZE / 2;
 	let width = MAX_WIDTH;
 
 	let window = {

@@ -12,7 +12,7 @@ use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 use crate::fft::BoxSlice2D;
-use crate::fft::RESOLUTION;
+use crate::fft::WINDOW_SIZE;
 use crate::fft::fft_spectrum_into;
 use crate::rgba::Rgba;
 
@@ -183,16 +183,16 @@ pub fn show_spectrogram(spectra: BoxSlice2D<Rgba>, ffts_per_second: u32) {
 	});
 }
 
-pub fn sliding_spectra(samples: Box<[i16]>, step_size: usize) -> BoxSlice2D<f32> {
-	let num_ffts = (samples.len() - RESOLUTION) / step_size;
+pub fn sliding_spectra(samples: Box<[f32]>, step_size: usize) -> BoxSlice2D<f32> {
+	let num_ffts = (samples.len() - WINDOW_SIZE) / step_size;
 	let mut start = 0;
-	let mut out = BoxSlice2D::<f32>::new(RESOLUTION / 2, num_ffts);
+	let mut out = BoxSlice2D::<f32>::new(WINDOW_SIZE / 2, num_ffts);
 
 	for i in 0..num_ffts {
-		let mut fr = Box::new([0.0; RESOLUTION]);
+		let mut fr = Box::new([0.0; WINDOW_SIZE]);
 
-		for j in 0..RESOLUTION {
-			fr[j] = samples[j + start] as f32 / i16::MAX as f32 / 2.0;
+		for j in 0..WINDOW_SIZE {
+			fr[j] = samples[j + start];
 		}
 
 		fft_spectrum_into(out.row_mut(i), fr.as_mut());

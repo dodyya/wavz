@@ -30,12 +30,12 @@ pub fn render_spectrum(spectrum: &[f32]) -> Vec<Rgba> {
 	// let (min, max) = extrema(spectrum.iter());
 	// dbg!(min, max);
 	// let range = CLAMP_FACTOR * (max - min);
-	const RANGE: f32 = 0.001;
-	const CUTOFF: f32 = 0.05; // Visual cutoff for what is black
+	const RANGE: f32 = 0.005;
+	const CUTOFF: f32 = 0.15; // Visual cutoff for what is black
 	spectrum
 		.iter()
 		.map(|&value| {
-			let normed_hue = (value / RANGE).clamp(0.0, 1.0);
+			let normed_hue = ((value) / RANGE).clamp(0.0, 1.0);
 			if normed_hue > CUTOFF { Rgba::hue(normed_hue) } else { Rgba::BLACK }
 		})
 		.collect()
