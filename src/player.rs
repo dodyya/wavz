@@ -4,7 +4,7 @@ use std::thread;
 
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use pixels::{Pixels, SurfaceTexture};
-use ringbuf::traits::{Consumer as _, Producer as _, Split as _};
+use ringbuf::traits::{Consumer as _, Observer, Producer as _, Split as _};
 use std::time::Duration;
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
@@ -74,12 +74,12 @@ pub fn mic_into_pixels() {
 		let mut discard = vec![0.0f32; STEP_SIZE];
 
 		loop {
-			let n = mic_cons.peek_slice(&mut incoming);
-
-			if n == 0 {
+			let n = mic_cons.occupied_len();
+			if n < WINDOW_SIZE {
 				continue;
 			}
 
+			let _ = mic_cons.peek_slice(&mut incoming);
 			let _ = send_proxy.send_event(FftEvent::PixelsReady {
 				pix: Arc::from(
 					render_spectrum(&fft_spectrum(
@@ -93,11 +93,11 @@ pub fn mic_into_pixels() {
 	});
 
 	let _ = stream.play();
-	show_mic(event_loop);
+	run_loop(event_loop);
 	drop(stream);
 }
 
-fn show_mic(event_loop: EventLoop<FftEvent>) {
+fn run_loop(event_loop: EventLoop<FftEvent>) {
 	let mut input = WinitInputHelper::new();
 	let height = WINDOW_SIZE / 2;
 	let width = MAX_WIDTH;
