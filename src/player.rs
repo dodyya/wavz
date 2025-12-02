@@ -66,41 +66,29 @@ pub fn mic_into_pixels() {
 	let send_proxy = event_loop.create_proxy();
 
 	fn mic_gain(x: f32) -> f32 {
-		x * 80.0f32
+		x * 8.0f32
 	}
 
 	thread::spawn(move || {
-		let mut fft_buf = Vec::<f32>::with_capacity(WINDOW_SIZE * 20);
 		let mut incoming = vec![0.0f32; WINDOW_SIZE];
-		let mut idx: usize = 0;
+		let mut discard = vec![0.0f32; STEP_SIZE];
 
 		loop {
-			let n = mic_cons.pop_slice(&mut incoming);
+			let n = mic_cons.peek_slice(&mut incoming);
 
 			if n == 0 {
 				continue;
 			}
 
-			fft_buf.extend_from_slice(&incoming[..n]);
-
-			while idx + WINDOW_SIZE < fft_buf.len() {
-				let _ = send_proxy.send_event(FftEvent::PixelsReady {
-					pix: Arc::from(
-						render_spectrum(&fft_spectrum(
-							&mut (fft_buf[idx..idx + WINDOW_SIZE].iter().map(|x| mic_gain(*x)))
-								.collect::<Vec<f32>>(),
-						))
-						.into_boxed_slice(),
-					),
-				});
-				idx += STEP_SIZE;
-			}
-
-			if idx > WINDOW_SIZE * 16 {
-				fft_buf.copy_within(idx.., 0);
-				fft_buf.truncate(fft_buf.len() - idx);
-				idx = 0;
-			}
+			let _ = send_proxy.send_event(FftEvent::PixelsReady {
+				pix: Arc::from(
+					render_spectrum(&fft_spectrum(
+						&mut (incoming.iter().map(|x| mic_gain(*x))).collect::<Vec<f32>>(),
+					))
+					.into_boxed_slice(),
+				),
+			});
+			mic_cons.pop_slice(&mut discard);
 		}
 	});
 
