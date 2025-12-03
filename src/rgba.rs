@@ -1,9 +1,9 @@
 use std::fmt::Debug;
 
-use bytemuck::NoUninit;
+use bytemuck::{Pod, Zeroable, must_cast};
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, NoUninit, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable, Eq, PartialEq)]
 pub struct Rgba {
 	pub r: u8,
 	pub g: u8,
@@ -18,6 +18,7 @@ impl Rgba {
 	pub fn rgb(r: u8, g: u8, b: u8) -> Self {
 		Rgba { r, g, b, a: 255 }
 	}
+
 	pub fn hsv(h: f32, s: f32, v: f32) -> Self {
 		let c = v * s;
 		let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
@@ -37,11 +38,13 @@ impl Rgba {
 			((b + m) * 255.0) as u8,
 		)
 	}
+
 	pub fn hue(h: f32) -> Self {
 		Self::hsv(360.0 * h, 1.0, 1.0)
 	}
+
 	pub fn to_bytes(self) -> [u8; 4] {
-		unsafe { std::mem::transmute(self) }
+		must_cast(self)
 	}
 }
 

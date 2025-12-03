@@ -1,11 +1,11 @@
-use crate::fft::WINDOW_SIZE;
 use std::sync::Arc;
 use std::thread;
 
+use bytemuck::must_cast_ref;
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use pixels::{Pixels, SurfaceTexture};
+use ringbuf::HeapRb;
 use ringbuf::traits::{Consumer as _, Observer, Producer as _, Split as _};
-use std::time::Duration;
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{EventLoop, EventLoopBuilder};
@@ -13,10 +13,9 @@ use winit::keyboard::KeyCode;
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-use crate::fft::fft_spectrum;
+use crate::fft::{WINDOW_SIZE, fft_spectrum};
 use crate::graphics::render_spectrum;
 use crate::rgba::Rgba;
-use ringbuf::HeapRb;
 
 const PIXEL_SCALE: usize = 2;
 const MAX_WIDTH: usize = 1500; // Maximum screen width, determines playability
@@ -44,16 +43,18 @@ pub fn mic_into_pixels() {
 	// }
 
 	let stream = match config.sample_format() {
-		cpal::SampleFormat::F32 => device
-			.build_input_stream(
-				&config.into(),
-				move |data: &[f32], _: &_| {
-					mic_prod.push_slice(data);
-				},
-				err_fn,
-				None,
-			)
-			.unwrap(),
+		cpal::SampleFormat::F32 => {
+			device
+				.build_input_stream(
+					&config.into(),
+					move |data: &[f32], _: &_| {
+						mic_prod.push_slice(data);
+					},
+					err_fn,
+					None,
+				)
+				.unwrap()
+		},
 		sample_format => {
 			panic!("Unsupported sample format '{sample_format}'")
 		},
@@ -143,7 +144,7 @@ fn run_loop(event_loop: EventLoop<FftEvent>) {
 			let x = width - 1;
 			for y in 0..height {
 				frame[(y * width + x) * RGBA..(y * width + x + 1) * RGBA]
-					.copy_from_slice(&pix[y].to_bytes())
+					.copy_from_slice(must_cast_ref::<_, [u8; 4]>(&pix[y]))
 			}
 		}
 
