@@ -43,18 +43,16 @@ pub fn mic_into_pixels() {
 	// }
 
 	let stream = match config.sample_format() {
-		cpal::SampleFormat::F32 => {
-			device
-				.build_input_stream(
-					&config.into(),
-					move |data: &[f32], _: &_| {
-						mic_prod.push_slice(data);
-					},
-					err_fn,
-					None,
-				)
-				.unwrap()
-		},
+		cpal::SampleFormat::F32 => device
+			.build_input_stream(
+				&config.into(),
+				move |data: &[f32], _: &_| {
+					mic_prod.push_slice(data);
+				},
+				err_fn,
+				None,
+			)
+			.unwrap(),
 		sample_format => {
 			panic!("Unsupported sample format '{sample_format}'")
 		},
@@ -75,8 +73,7 @@ pub fn mic_into_pixels() {
 		let mut discard = vec![0.0f32; STEP_SIZE];
 
 		loop {
-			let n = mic_cons.occupied_len();
-			if n < WINDOW_SIZE {
+			if mic_cons.occupied_len() < WINDOW_SIZE {
 				continue;
 			}
 
