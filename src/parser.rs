@@ -1,8 +1,18 @@
 use core::error::Error;
 use core::fmt;
+use std::any::type_name;
 use std::io::{self, SeekFrom};
 
-use bytemuck::{Pod, Zeroable, must_cast_mut, must_cast_slice_mut, zeroed_slice_box};
+use bytemuck::{
+	AnyBitPattern,
+	Pod,
+	Zeroable,
+	cast_ref,
+	cast_slice,
+	must_cast_mut,
+	must_cast_slice_mut,
+	zeroed_slice_box,
+};
 
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 #[repr(C)]
@@ -264,5 +274,125 @@ impl RiffWavePcm {
 			channels,
 			riff_data.bytes_per_second,
 		))
+	}
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Channels {
+	One = 1,
+	Two = 2,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct MmapedRiffPcm<'samples> {
+	pub samples_per_second: u32,
+	pub channels: Channels,
+	pub samples: &'samples [i16],
+}
+
+/// splits &[u8] into (&T, &[u8])
+/// panics if unaligned or not enough bytes for a T in data
+macro_rules! split_cast_rem {
+	($var:ident, $type:ty) => {
+		(
+			::bytemuck::cast_ref::<[u8; { ::core::mem::size_of::<$type>() }], $type>(
+				$var.first_chunk::<{ ::core::mem::size_of::<$type>() }>()
+					.unwrap(),
+			),
+			&$var[{ ::core::mem::size_of::<$type>() }..],
+		)
+	};
+}
+
+#[derive(AnyBitPattern, Debug, Clone, Copy)]
+#[repr(C)]
+struct Format16 {
+	data_format: u16,
+	num_channels: u16,
+	sample_blocks_per_sec: u32,
+	bytes_per_second: u32,
+	sample_block_size: u16,
+	bits_per_sample: u16,
+}
+#[derive(AnyBitPattern, Debug, Clone, Copy)]
+#[repr(C)]
+struct Format18 {
+	data_format: u16,
+	num_channels: u16,
+	sample_blocks_per_sec: u32,
+	bytes_per_second: u32,
+	sample_block_size: u16,
+	bits_per_sample: u16,
+	extension_size: u16, // could validate: 0
+}
+#[derive(AnyBitPattern, Debug, Clone, Copy)]
+#[repr(C)]
+struct Format40 {
+	data_format_ext: u16, // could validate: extensible
+	num_channels: u16,
+	sample_blocks_per_sec: u32,
+	bytes_per_second: u32,
+	sample_block_size: u16,
+	bits_per_sample: u16,
+	extension_size: u16, // could validate: 22
+	valid_bits_per_sample: u16,
+	speaker_position_mask: [u8; 4],
+	data_format: u16,
+	extention_tag: [u8; 14],
+}
+
+/// panics if not enough data or if unaligned (should not happen if the slice
+/// is actually from mmap)
+pub fn from_mmap(file_data: &[u8]) -> MmapedRiffPcm<'_> {
+	let (riff_header, rest) = split_cast_rem!(file_data, ChunkHeader);
+	assert!(riff_header.tag == ChunkHeader::RIFF_TAG);
+
+	let (wav_tag, rest) = split_cast_rem!(rest, [u8; 4]);
+	assert!(wav_tag == b"WAVE");
+
+	let (fmt_header, rest) = split_cast_rem!(rest, ChunkHeader);
+	assert!(fmt_header.tag == ChunkHeader::FORMAT_TAG);
+
+	let (bytes_per_sec, num_channels, data_format, rest) = match fmt_header.num_bytes {
+		16 => {
+			let (d, rest) = split_cast_rem!(rest, Format16);
+			(d.bytes_per_second, d.num_channels, d.data_format, rest)
+		},
+		18 => {
+			let (d, rest) = split_cast_rem!(rest, Format18);
+			(d.bytes_per_second, d.num_channels, d.data_format, rest)
+		},
+		40 => {
+			let (d, rest) = split_cast_rem!(rest, Format40);
+			(d.bytes_per_second, d.num_channels, d.data_format, rest)
+		},
+		wrong => {
+			panic!("chunk size of `{wrong}` is not 16, 18, or 40");
+		},
+	};
+
+	assert!(data_format == DataFormat::PCM);
+	let channels = match num_channels {
+		1 => Channels::One,
+		2 => Channels::Two,
+		n => panic!("right now only 1 or 2 channels is supported, which {n} is not"),
+	};
+
+	let mut data = rest;
+
+	// find data chunk
+	let size = loop {
+		let (header, rest) = split_cast_rem!(data, ChunkHeader);
+		let size = header.num_bytes as usize;
+		if header.tag == ChunkHeader::DATA_TAG {
+			break size;
+		}
+		data = &rest[size..];
+	};
+
+	MmapedRiffPcm {
+		samples_per_second: bytes_per_sec / num_channels as u32 / size_of::<i16>() as u32,
+		channels,
+		samples: cast_slice::<u8, i16>(&rest[..size]),
 	}
 }

@@ -1,7 +1,9 @@
 use std::io::{Read, Seek};
 
 mod demos {
+	use std::fs::File;
 	use std::io::{Read, Seek};
+	use std::path::Path;
 	use std::sync::atomic::{AtomicBool, Ordering};
 	use std::thread;
 	use std::time::Duration;
@@ -10,9 +12,8 @@ mod demos {
 	use cpal::{BufferSize, SampleFormat, SampleRate, StreamConfig};
 	use wavez::fft::fft_spectrum;
 	use wavez::graphics::gen_spectrogram;
-	use wavez::parser::RiffWavePcm;
-	use wavez::static_vis::show_spectrogram;
-	use wavez::static_vis::sliding_spectra;
+	use wavez::parser::{MmapedRiffPcm, RiffWavePcm, from_mmap};
+	use wavez::static_vis::{show_spectrogram, sliding_spectra};
 
 	#[allow(unused)]
 	pub fn wav_visualizer(data: impl Read + Seek) {
@@ -118,26 +119,28 @@ mod demos {
 		let step_size = 1 << 9;
 
 		let stream = match config.sample_format() {
-			cpal::SampleFormat::F32 => device
-				.build_input_stream(
-					&config.into(),
-					move |data: &[f32], _: &_| {
-						buf.extend_from_slice(data);
-						while buf.len() - start > WINDOW_SIZE {
-							ascii_display(&fft_spectrum(
-								&mut (&buf[start..start + WINDOW_SIZE]).to_vec(),
-							));
-							start += step_size;
-						}
-						if start > 0 && (start > 4096 || start * 2 > buf.len()) {
-							buf.drain(..start);
-							start = 0;
-						}
-					},
-					err_fn,
-					None,
-				)
-				.unwrap(),
+			cpal::SampleFormat::F32 => {
+				device
+					.build_input_stream(
+						&config.into(),
+						move |data: &[f32], _: &_| {
+							buf.extend_from_slice(data);
+							while buf.len() - start > WINDOW_SIZE {
+								ascii_display(&fft_spectrum(
+									&mut (&buf[start..start + WINDOW_SIZE]).to_vec(),
+								));
+								start += step_size;
+							}
+							if start > 0 && (start > 4096 || start * 2 > buf.len()) {
+								buf.drain(..start);
+								start = 0;
+							}
+						},
+						err_fn,
+						None,
+					)
+					.unwrap()
+			},
 			sample_format => {
 				panic!("Unsupported sample format '{sample_format}'")
 			},
@@ -151,18 +154,32 @@ mod demos {
 	pub fn mic_into_pixels() {
 		wavez::player::mic_into_pixels();
 	}
+
+	pub fn mmap(path: &str) {
+		let file = File::open(path).unwrap();
+		let mmap = unsafe { memmap2::Mmap::map(&file).unwrap() };
+		let mmap = &mmap[..];
+		let MmapedRiffPcm {
+			samples_per_second,
+			channels,
+			samples,
+		} = from_mmap(mmap);
+
+		todo!();
+	}
 }
 
 fn main() {
 	#[allow(unused)]
 	use std::fs::File;
 
-	const PATH: &str = "test_files/ostavi.wav";
+	const PATH: &str = "test_files/chopin.wav";
 
 	// demos::mic_input();
 	// demos::wav_player(File::open(PATH).unwrap());
 	// demos::wav_visualizer(File::open(PATH).unwrap());
-	demos::mic_into_pixels();
+	// demos::mic_into_pixels();
+	demos::mmap(PATH);
 }
 
 // struct PlayerState {
