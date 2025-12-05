@@ -1,15 +1,22 @@
 use std::io::{Read, Seek};
+use std::path::Path;
 
 mod demos {
 	use std::fs::File;
 	use std::io::{Read, Seek};
+	#[cfg(unix)]
+	use std::os::fd::IntoRawFd;
+	#[cfg(windows)]
+	use std::os::windows::io::IntoRawHandle;
 	use std::path::Path;
 	use std::sync::atomic::{AtomicBool, Ordering};
+	use std::sync::{LazyLock, OnceLock};
 	use std::thread;
 	use std::time::Duration;
 
 	use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 	use cpal::{BufferSize, SampleFormat, SampleRate, StreamConfig};
+	use memmap2::Mmap;
 	use wavez::fft::fft_spectrum;
 	use wavez::graphics::gen_spectrogram;
 	use wavez::parser::{MmapedRiffPcm, RiffWavePcm, from_mmap};
@@ -32,60 +39,6 @@ mod demos {
 		));
 		show_spectrogram(spectra, smps / step_size as u32);
 	}
-
-	#[allow(unused)]
-	pub fn wav_player(data: impl Read + Seek) {
-		let host = cpal::default_host();
-
-		#[cfg(not(target_os = "linux"))]
-		let device = host.default_output_device().unwrap();
-		#[cfg(target_os = "linux")]
-		let device = host
-			.output_devices()
-			.unwrap()
-			.find(|dev| dev.name().as_deref() == Ok("pipewire"))
-			.unwrap();
-
-		println!("using audio device named \"{}\"", device.name().unwrap());
-
-		let RiffWavePcm { samples_per_second, samples } = RiffWavePcm::parse(data).unwrap();
-
-		let config = StreamConfig {
-			channels: 1,
-			sample_rate: SampleRate(samples_per_second),
-			buffer_size: BufferSize::Default,
-		};
-
-		dbg!(&config);
-
-		let mut samples = &*Box::leak(samples); // ez borrow checker error fix
-
-		let is_done = &*Box::leak(Box::new(AtomicBool::new(false)));
-
-		let stream = device
-			.build_output_stream(
-				&config,
-				move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
-					if let Some((head, tail)) = samples.split_at_checked(data.len()) {
-						data.copy_from_slice(head);
-						samples = tail;
-					} else {
-						data[..samples.len()].copy_from_slice(samples);
-						data[samples.len()..].fill(0);
-						samples = &[];
-						(is_done).store(true, Ordering::Relaxed);
-					}
-				},
-				move |e| panic!("encountered error: {e}"),
-				None,
-			)
-			.unwrap();
-
-		stream.play().unwrap();
-
-		while !is_done.load(Ordering::Relaxed) {}
-	}
-
 	#[allow(unused)]
 	pub fn mic_input() {
 		use wavez::fft::WINDOW_SIZE;
@@ -155,17 +108,82 @@ mod demos {
 		wavez::player::mic_into_pixels();
 	}
 
-	pub fn mmap(path: &str) {
-		let file = File::open(path).unwrap();
-		let mmap = unsafe { memmap2::Mmap::map(&file).unwrap() };
-		let mmap = &mmap[..];
+	pub fn wav_player_mmap(path: &Path) {
+		static MMAP: OnceLock<Mmap> = OnceLock::new();
+		{
+			let fd = File::open(path).unwrap();
+			#[cfg(unix)]
+			let fd = fd.into_raw_fd();
+			#[cfg(windows)]
+			let fd = fd.into_raw_handle();
+
+			// the lifetime of the mmap is not tied to the lifetime of the file descriptor it was
+			// created from, so Mmap: 'static
+			//
+			// SAFETY: this is unsound; we have no reason to think that the file won't be removed
+			// while we read it. But we can't do anything about this; libc flock(2) is not strong enough
+			// to prevent this, and it's also not cross-platform. So we don't have much of a choice.
+			// The memmap2 crate docs guarantee that if we violate this assumption, we will get a
+			// SIGBUS (and thus the program will terminate), which means this doesn't violate the
+			// "real" memory safety of this program.
+			MMAP.set(unsafe { Mmap::map(fd) }.unwrap())
+				.expect("the oncelock cannot be initialized yet");
+		}
+		// 'static :)
+		let mmap: &'static [u8] = &*(*MMAP.get().expect("the oncelock was just initialized"));
+
 		let MmapedRiffPcm {
 			samples_per_second,
 			channels,
 			samples,
 		} = from_mmap(mmap);
 
-		todo!();
+		// TODO: refactor all this below into something like fn(&'static [i16]) -> thread handle {}
+		let host = cpal::default_host();
+
+		#[cfg(not(target_os = "linux"))]
+		let device = host.default_output_device().unwrap();
+		#[cfg(target_os = "linux")]
+		let device = host
+			.output_devices()
+			.unwrap()
+			.find(|dev| dev.name().as_deref() == Ok("pipewire"))
+			.unwrap();
+
+		println!("using audio device named \"{}\"", device.name().unwrap());
+
+		let config = StreamConfig {
+			channels: channels as u16,
+			sample_rate: SampleRate(samples_per_second),
+			buffer_size: BufferSize::Default,
+		};
+
+		dbg!(&config);
+
+		let mut samples_player = samples;
+		let stream = device
+			.build_output_stream(
+				&config,
+				move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
+					if let Some((head, tail)) = samples_player.split_at_checked(data.len()) {
+						data.copy_from_slice(head);
+						samples_player = tail;
+					} else {
+						data[..samples_player.len()].copy_from_slice(samples_player);
+						data[samples_player.len()..].fill(0);
+						samples_player = &[];
+						std::process::exit(0);
+					}
+				},
+				move |e| panic!("encountered error: {e}"),
+				None,
+			)
+			.unwrap();
+
+		stream.play().unwrap();
+		loop {
+			std::thread::yield_now();
+		}
 	}
 }
 
@@ -179,7 +197,7 @@ fn main() {
 	// demos::wav_player(File::open(PATH).unwrap());
 	// demos::wav_visualizer(File::open(PATH).unwrap());
 	// demos::mic_into_pixels();
-	demos::mmap(PATH);
+	demos::wav_player_mmap(Path::new(PATH));
 }
 
 // struct PlayerState {
