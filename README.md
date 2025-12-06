@@ -31,19 +31,15 @@ We plan to implement the Fast Fourier Transform algorithm, and apply it to visua
 - [x] Time-synced scrolling
 - [x] Play/pause/scroll along visualization
 - [ ] Playback indicator (scrolling vertical line)
-- [ ] Graceful pause upon song end
 
 ==== COMPLETE BY SUBMISSION; 12/10 ====
 
 - [ ] Variable y-ranges in visualization, log scale?
 - [ ] Sync audio and visualization
-- [ ] Alternative mode that displays "bouncing" waveform
       ~~ - [ ] UI improvements; see wave and frequencies in the same window, use some external crate~~
-- [ ] .wav playback (using external crate), attempt to sync sliding window frequencies with audio
 
 ==§§ POTENTIAL EXTENSIONS §§==
 
-- [ ] Reasonable UX that allows you to pick the file
 - [ ] Inverse FFT
 - [ ] Modulate real audio data
 - [ ] Inverse parser that writes to file
