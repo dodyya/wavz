@@ -1,13 +1,10 @@
-use std::env::args;
 use std::fs::File;
 use std::path::Path;
 use std::sync::OnceLock;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
 
-use crate::parser::{Channels, MmapedRiffPcm, from_mmap};
-use cpal::traits::HostTrait as _;
-use cpal::traits::{DeviceTrait as _, StreamTrait as _};
+use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use cpal::{BufferSize, SampleRate, StreamConfig};
 use memmap2::Mmap;
 use pixels::{Pixels, SurfaceTexture};
@@ -17,6 +14,8 @@ use winit::event_loop::EventLoop;
 use winit::keyboard::KeyCode;
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
+
+use crate::parser::{Channels, MmapedRiffPcm, from_mmap};
 
 pub fn mmap_vis(file_path: String) {
 	let file_buf: &'static [u8] = mmap_file(Path::new(&file_path));

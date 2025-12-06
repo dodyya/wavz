@@ -1,10 +1,14 @@
 use core::error::Error;
 use core::fmt;
-use std::any::type_name;
 use std::io::{self, SeekFrom};
 
 use bytemuck::{
-	AnyBitPattern, Pod, Zeroable, cast_ref, cast_slice, must_cast_mut, must_cast_slice_mut,
+	AnyBitPattern,
+	Pod,
+	Zeroable,
+	cast_slice,
+	must_cast_mut,
+	must_cast_slice_mut,
 	zeroed_slice_box,
 };
 
