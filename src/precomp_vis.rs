@@ -1,4 +1,5 @@
 use crate::graphics::gen_spectrogram;
+use crate::parser::RiffWavePcm;
 use std::fmt::Debug;
 use std::time::Instant;
 
@@ -26,7 +27,7 @@ const MAX_WIDTH: usize = 1500; // Maximum screen width, determines playability
 const RGBA: usize = 4; // Magic number for bytes/color
 const INERTIA_RATIO: f32 = 5f32 / 6f32; // bigger number => more inertia
 
-pub fn precomp_vis(samples: Box<[i16]>, step_size: usize, samples_per_second: u32) {
+pub fn precomp_vis(RiffWavePcm { samples, samples_per_second }: RiffWavePcm, step_size: usize) {
 	let spectra = gen_spectrogram(crate::precomp_vis::sliding_spectra(
 		samples
 			.into_iter()

@@ -1,10 +1,10 @@
 use wavez::demos::*;
 fn main() {
 	mic_vis();
-	precomp_vis();
-	audio_vis();
-	mic_ascii();
-	wav_player();
+	// precomp_vis();
+	// audio_vis();
+	// mic_ascii();
+	// wav_player();
 }
 
 // fn audio_video_combined(file: &Path) {

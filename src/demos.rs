@@ -22,15 +22,11 @@ pub fn mic_vis() {
 pub fn precomp_vis() {
 	let file_path = args().skip(1).next().unwrap();
 	let data = File::open(file_path).unwrap();
-
-	let RiffWavePcm {
-		samples,
-		samples_per_second: smps,
-	} = RiffWavePcm::parse(data).unwrap();
+	let data = RiffWavePcm::parse(data).unwrap();
 
 	let step_size = 1 << 8;
 
-	crate::precomp_vis::precomp_vis(samples, step_size, smps);
+	crate::precomp_vis::precomp_vis(data, step_size);
 }
 
 pub fn audio_vis() {
