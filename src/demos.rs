@@ -1,20 +1,19 @@
-use crate::fft::fft_spectrum;
-use crate::parser::{MmapedRiffPcm, RiffWavePcm, from_mmap};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{BufferSize, SampleFormat, SampleRate, StreamConfig};
-use memmap2::Mmap;
 use std::env::args;
 use std::fs::File;
-use std::io::{Read, Seek};
 #[cfg(unix)]
 use std::os::fd::IntoRawFd;
 #[cfg(windows)]
 use std::os::windows::io::IntoRawHandle;
-use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{LazyLock, OnceLock};
+use std::sync::OnceLock;
 use std::thread;
 use std::time::Duration;
+
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{BufferSize, SampleRate, StreamConfig};
+use memmap2::Mmap;
+
+use crate::fft::fft_spectrum;
+use crate::parser::{MmapedRiffPcm, RiffWavePcm, from_mmap};
 
 pub fn mic_vis() {
 	crate::mic_vis::mic_vis();
@@ -71,26 +70,28 @@ pub fn mic_ascii() {
 	let step_size = 1 << 9;
 
 	let stream = match config.sample_format() {
-		cpal::SampleFormat::F32 => device
-			.build_input_stream(
-				&config.into(),
-				move |data: &[f32], _: &_| {
-					buf.extend_from_slice(data);
-					while buf.len() - start > WINDOW_SIZE {
-						ascii_display(&fft_spectrum(
-							&mut (&buf[start..start + WINDOW_SIZE]).to_vec(),
-						));
-						start += step_size;
-					}
-					if start > 0 && (start > 4096 || start * 2 > buf.len()) {
-						buf.drain(..start);
-						start = 0;
-					}
-				},
-				err_fn,
-				None,
-			)
-			.unwrap(),
+		cpal::SampleFormat::F32 => {
+			device
+				.build_input_stream(
+					&config.into(),
+					move |data: &[f32], _: &_| {
+						buf.extend_from_slice(data);
+						while buf.len() - start > WINDOW_SIZE {
+							ascii_display(&fft_spectrum(
+								&mut (&buf[start..start + WINDOW_SIZE]).to_vec(),
+							));
+							start += step_size;
+						}
+						if start > 0 && (start > 4096 || start * 2 > buf.len()) {
+							buf.drain(..start);
+							start = 0;
+						}
+					},
+					err_fn,
+					None,
+				)
+				.unwrap()
+		},
 		sample_format => {
 			panic!("Unsupported sample format '{sample_format}'")
 		},
