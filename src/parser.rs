@@ -4,13 +4,7 @@ use std::any::type_name;
 use std::io::{self, SeekFrom};
 
 use bytemuck::{
-	AnyBitPattern,
-	Pod,
-	Zeroable,
-	cast_ref,
-	cast_slice,
-	must_cast_mut,
-	must_cast_slice_mut,
+	AnyBitPattern, Pod, Zeroable, cast_ref, cast_slice, must_cast_mut, must_cast_slice_mut,
 	zeroed_slice_box,
 };
 
@@ -382,6 +376,7 @@ pub fn from_mmap(file_data: &[u8]) -> MmapedRiffPcm<'_> {
 
 	// find data chunk
 	let size = loop {
+		dbg!(data.as_ptr());
 		let (header, rest) = split_cast_rem!(data, ChunkHeader);
 		let size = header.num_bytes as usize;
 		if header.tag == ChunkHeader::DATA_TAG {

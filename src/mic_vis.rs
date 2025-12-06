@@ -25,7 +25,7 @@ const RGBA: usize = 4;
 enum FftEvent {
 	PixelsReady { pix: Arc<[Rgba]> },
 }
-pub fn mic_into_pixels() {
+pub fn mic_vis() {
 	const STEP_SIZE: usize = 1 << 9;
 	let host = cpal::default_host();
 	let device = host.default_input_device().unwrap();
@@ -91,11 +91,11 @@ pub fn mic_into_pixels() {
 	});
 
 	let _ = stream.play();
-	run_loop(event_loop);
+	run_window(event_loop);
 	drop(stream);
 }
 
-fn run_loop(event_loop: EventLoop<FftEvent>) {
+fn run_window(event_loop: EventLoop<FftEvent>) {
 	let mut input = WinitInputHelper::new();
 	let height = WINDOW_SIZE / 2;
 	let width = MAX_WIDTH;

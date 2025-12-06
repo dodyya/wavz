@@ -1,3 +1,4 @@
+use crate::graphics::gen_spectrogram;
 use std::fmt::Debug;
 use std::time::Instant;
 
@@ -25,6 +26,16 @@ const MAX_WIDTH: usize = 1500; // Maximum screen width, determines playability
 const RGBA: usize = 4; // Magic number for bytes/color
 const INERTIA_RATIO: f32 = 5f32 / 6f32; // bigger number => more inertia
 
+pub fn precomp_vis(samples: Box<[i16]>, step_size: usize, samples_per_second: u32) {
+	let spectra = gen_spectrogram(crate::precomp_vis::sliding_spectra(
+		samples
+			.into_iter()
+			.map(|x| x as f32 / i16::MAX as f32)
+			.collect(),
+		step_size,
+	));
+	crate::precomp_vis::run_window(spectra, samples_per_second / step_size as u32);
+}
 struct PlayState {
 	pub x_offset: usize,
 	pub scroll_v: f32,
@@ -104,7 +115,7 @@ impl Debug for PlayState {
 	}
 }
 
-pub fn show_spectrogram(spectra: BoxSlice2D<Rgba>, ffts_per_second: u32) {
+pub fn run_window(spectra: BoxSlice2D<Rgba>, ffts_per_second: u32) {
 	let domain = spectra.width;
 	let range = spectra.height;
 	let img = spectra.data;
