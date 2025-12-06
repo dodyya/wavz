@@ -10,6 +10,21 @@ use bytemuck::{
 
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 #[repr(C)]
+struct ChunkHeaderRaw {
+	tag: [u8; 4],
+	num_bytes: [u8; 4],
+}
+impl ChunkHeaderRaw {
+	fn into_chunk_header(self) -> ChunkHeader {
+		ChunkHeader {
+			tag: self.tag,
+			num_bytes: u32::from_le_bytes(self.num_bytes),
+		}
+	}
+}
+
+#[derive(Clone, Copy, Pod, Zeroable, Debug)]
+#[repr(C)]
 struct ChunkHeader {
 	tag: [u8; 4],
 	num_bytes: u32,
@@ -313,8 +328,8 @@ struct Format16 {
 struct Format18 {
 	data_format: u16,
 	num_channels: u16,
-	sample_blocks_per_sec: u32,
-	bytes_per_second: u32,
+	sample_blocks_per_sec: [u8; 4],
+	bytes_per_second: [u8; 4],
 	sample_block_size: u16,
 	bits_per_sample: u16,
 	extension_size: u16, // could validate: 0
@@ -338,13 +353,14 @@ struct Format40 {
 /// panics if not enough data or if unaligned (should not happen if the slice
 /// is actually from mmap)
 pub fn from_mmap(file_data: &[u8]) -> MmapedRiffPcm<'_> {
-	let (riff_header, rest) = split_cast_rem!(file_data, ChunkHeader);
+	let (riff_header, rest) = split_cast_rem!(file_data, ChunkHeaderRaw);
 	assert!(riff_header.tag == ChunkHeader::RIFF_TAG);
 
 	let (wav_tag, rest) = split_cast_rem!(rest, [u8; 4]);
 	assert!(wav_tag == b"WAVE");
 
-	let (fmt_header, rest) = split_cast_rem!(rest, ChunkHeader);
+	let (fmt_header, rest) = split_cast_rem!(rest, ChunkHeaderRaw);
+	let fmt_header = fmt_header.into_chunk_header();
 	assert!(fmt_header.tag == ChunkHeader::FORMAT_TAG);
 
 	let (bytes_per_sec, num_channels, data_format, rest) = match fmt_header.num_bytes {
@@ -354,7 +370,12 @@ pub fn from_mmap(file_data: &[u8]) -> MmapedRiffPcm<'_> {
 		},
 		18 => {
 			let (d, rest) = split_cast_rem!(rest, Format18);
-			(d.bytes_per_second, d.num_channels, d.data_format, rest)
+			(
+				u32::from_le_bytes(d.bytes_per_second),
+				d.num_channels,
+				d.data_format,
+				rest,
+			)
 		},
 		40 => {
 			let (d, rest) = split_cast_rem!(rest, Format40);
@@ -376,8 +397,8 @@ pub fn from_mmap(file_data: &[u8]) -> MmapedRiffPcm<'_> {
 
 	// find data chunk
 	let size = loop {
-		dbg!(data.as_ptr());
-		let (header, rest) = split_cast_rem!(data, ChunkHeader);
+		let (header, rest) = split_cast_rem!(data, ChunkHeaderRaw);
+		let header = header.into_chunk_header();
 		let size = header.num_bytes as usize;
 		if header.tag == ChunkHeader::DATA_TAG {
 			break size;
