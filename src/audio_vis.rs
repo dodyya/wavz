@@ -17,7 +17,7 @@ use winit_input_helper::WinitInputHelper;
 
 use crate::parser::{Channels, MmapedRiffPcm, from_mmap};
 
-pub fn mmap_vis(file_path: String) {
+pub fn audio_vis(file_path: String) {
 	let file_buf: &'static [u8] = mmap_file(Path::new(&file_path));
 	let MmapedRiffPcm {
 		samples_per_second,

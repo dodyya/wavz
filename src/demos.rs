@@ -33,9 +33,9 @@ pub fn precomp_vis() {
 	crate::precomp_vis::precomp_vis(samples, step_size, smps);
 }
 
-pub fn mmap_vis() {
+pub fn audio_vis() {
 	let file_path = args().skip(1).next().unwrap();
-	crate::mmap_vis::mmap_vis(file_path);
+	crate::audio_vis::audio_vis(file_path);
 }
 
 pub fn mic_ascii() {
@@ -70,28 +70,26 @@ pub fn mic_ascii() {
 	let step_size = 1 << 9;
 
 	let stream = match config.sample_format() {
-		cpal::SampleFormat::F32 => {
-			device
-				.build_input_stream(
-					&config.into(),
-					move |data: &[f32], _: &_| {
-						buf.extend_from_slice(data);
-						while buf.len() - start > WINDOW_SIZE {
-							ascii_display(&fft_spectrum(
-								&mut (&buf[start..start + WINDOW_SIZE]).to_vec(),
-							));
-							start += step_size;
-						}
-						if start > 0 && (start > 4096 || start * 2 > buf.len()) {
-							buf.drain(..start);
-							start = 0;
-						}
-					},
-					err_fn,
-					None,
-				)
-				.unwrap()
-		},
+		cpal::SampleFormat::F32 => device
+			.build_input_stream(
+				&config.into(),
+				move |data: &[f32], _: &_| {
+					buf.extend_from_slice(data);
+					while buf.len() - start > WINDOW_SIZE {
+						ascii_display(&fft_spectrum(
+							&mut (&buf[start..start + WINDOW_SIZE]).to_vec(),
+						));
+						start += step_size;
+					}
+					if start > 0 && (start > 4096 || start * 2 > buf.len()) {
+						buf.drain(..start);
+						start = 0;
+					}
+				},
+				err_fn,
+				None,
+			)
+			.unwrap(),
 		sample_format => {
 			panic!("Unsupported sample format '{sample_format}'")
 		},

@@ -3,13 +3,7 @@ use core::fmt;
 use std::io::{self, SeekFrom};
 
 use bytemuck::{
-	AnyBitPattern,
-	Pod,
-	Zeroable,
-	cast_slice,
-	must_cast_mut,
-	must_cast_slice_mut,
-	zeroed_slice_box,
+	AnyBitPattern, Pod, Zeroable, cast_slice, must_cast_mut, must_cast_slice_mut, zeroed_slice_box,
 };
 
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]

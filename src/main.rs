@@ -2,7 +2,7 @@ use wavez::demos::*;
 fn main() {
 	mic_vis();
 	precomp_vis();
-	mmap_vis();
+	audio_vis();
 	mic_ascii();
 	wav_player();
 }
