@@ -12,21 +12,21 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, SampleRate, StreamConfig};
 use memmap2::Mmap;
 
-use crate::fft::fft_spectrum;
+use crate::fft::{STEP_SIZE, fft_spectrum};
 use crate::parser::{MmapedRiffPcm, RiffWavePcm, from_mmap};
 
-pub fn mic_vis() {
-	crate::mic_vis::mic_vis();
-}
+// pub use crate::audio_vis::audio_vis;
+pub use crate::mic_vis::mic_vis;
+// pub fn mic_vis() {
+// 	crate::mic_vis::mic_vis();
+// }
 
 pub fn precomp_vis() {
 	let file_path = args().skip(1).next().unwrap();
 	let data = File::open(file_path).unwrap();
 	let data = RiffWavePcm::parse(data).unwrap();
 
-	let step_size = 1 << 8;
-
-	crate::precomp_vis::precomp_vis(data, step_size);
+	crate::precomp_vis::precomp_vis(data);
 }
 
 pub fn audio_vis() {
@@ -63,7 +63,6 @@ pub fn mic_ascii() {
 
 	let mut buf = Vec::new();
 	let mut start = 0;
-	let step_size = 1 << 9;
 
 	let stream = match config.sample_format() {
 		cpal::SampleFormat::F32 => device
@@ -75,7 +74,7 @@ pub fn mic_ascii() {
 						ascii_display(&fft_spectrum(
 							&mut (&buf[start..start + WINDOW_SIZE]).to_vec(),
 						));
-						start += step_size;
+						start += STEP_SIZE;
 					}
 					if start > 0 && (start > 4096 || start * 2 > buf.len()) {
 						buf.drain(..start);

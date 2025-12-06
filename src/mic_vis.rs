@@ -13,7 +13,7 @@ use winit::keyboard::KeyCode;
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-use crate::fft::{WINDOW_SIZE, fft_spectrum};
+use crate::fft::{STEP_SIZE, WINDOW_SIZE, fft_spectrum};
 use crate::graphics::render_spectrum;
 use crate::rgba::Rgba;
 
@@ -26,7 +26,6 @@ enum FftEvent {
 	PixelsReady { pix: Arc<[Rgba]> },
 }
 pub fn mic_vis() {
-	const STEP_SIZE: usize = 1 << 9;
 	let host = cpal::default_host();
 	let device = host.default_input_device().unwrap();
 	let config = device.default_input_config().unwrap();
