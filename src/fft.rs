@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 
 pub const WINDOW_SIZE: usize = 1 << 12; // 4096
-pub const STEP_SIZE: usize = 1 << 9;
+pub const STEP_SIZE: usize = 1 << 8; // 256
 
 struct Cplx<T> {
 	pub re: T,
