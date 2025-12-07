@@ -133,10 +133,12 @@ fn run_window(
 ) {
 	let event_loop = EventLoop::new().unwrap();
 	let mut input = WinitInputHelper::new();
-	let mut width = WIDTH;
+	let mut pixel_scale = 2;
+	let mut width = WIDTH as u32;
+	let mut range: f32 = 0.005;
 
 	let window = {
-		let size = PhysicalSize::new(WIDTH as u32, WINDOW_SIZE as u32 / 2);
+		let size = PhysicalSize::new(width, WINDOW_SIZE as u32 / 2);
 		WindowBuilder::new()
 			.with_title("wavez")
 			.with_inner_size(size)
@@ -182,13 +184,18 @@ fn run_window(
 			//
 			let snapped_idx = sample_idx - sample_idx % (STEP_SIZE);
 
-			let spectra = crate::graphics::gen_spectrogram(crate::precomp_vis::sliding_spectra(
-				samples[channels as usize * snapped_idx
-					..channels as usize * snapped_idx + width * STEP_SIZE + WINDOW_SIZE]
-					.into_iter()
-					.map(|&x| x as f32 / i16::MAX as f32)
-					.collect(),
-			));
+			let spectra = crate::graphics::gen_spectrogram(
+				crate::precomp_vis::sliding_spectra(
+					samples[channels as usize * snapped_idx
+						..channels as usize * snapped_idx
+							+ (width / pixel_scale) as usize * STEP_SIZE
+							+ WINDOW_SIZE]
+						.into_iter()
+						.map(|&x| x as f32 / i16::MAX as f32)
+						.collect(),
+				),
+				range,
+			);
 
 			let spectra = bytemuck::checked::cast_slice(&spectra.data);
 
@@ -200,25 +207,24 @@ fn run_window(
 			}
 		}
 
-		if let Event::WindowEvent {
-			event: WindowEvent::Resized(size),
-			..
-		} = event
-		{
+		let mut resize_pixels = |size: PhysicalSize<u32>, pixel_scale: u32| {
 			pixels
 				.resize_surface(size.width, size.height.clamp(1, MAX_HEIGHT))
 				.unwrap();
 			pixels
-				.resize_buffer(size.width, size.height.clamp(1, MAX_HEIGHT))
+				.resize_buffer(
+					size.width / pixel_scale,
+					(size.height / pixel_scale).clamp(1, MAX_HEIGHT / pixel_scale),
+				)
 				.unwrap();
-			width = size.width as usize;
-		}
+		};
 
 		if input.update(&event) {
 			if input.key_pressed(KeyCode::KeyQ) || input.close_requested() {
 				window_hook.exit();
 				return;
 			}
+
 			if input.key_pressed(KeyCode::Space) {
 				tx.send(Action::PlayPause).unwrap();
 
@@ -235,7 +241,34 @@ fn run_window(
 				return;
 			}
 
+			if input.key_pressed(KeyCode::Equal) {
+				pixel_scale += 1;
+				resize_pixels(window.inner_size(), pixel_scale);
+			}
+
+			if input.key_pressed(KeyCode::Minus) {
+				if pixel_scale > 1 {
+					pixel_scale -= 1;
+					resize_pixels(window.inner_size(), pixel_scale);
+				}
+			}
+
+			if input.key_pressed(KeyCode::ArrowUp) {
+				range /= 1.1;
+			}
+			if input.key_pressed(KeyCode::ArrowDown) {
+				range *= 1.1;
+			}
+
 			window.request_redraw();
+		}
+		if let Event::WindowEvent {
+			event: WindowEvent::Resized(size),
+			..
+		} = event
+		{
+			resize_pixels(size, pixel_scale);
+			width = size.width;
 		}
 	});
 }

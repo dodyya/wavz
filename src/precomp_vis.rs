@@ -28,12 +28,15 @@ const RGBA: usize = 4; // Magic number for bytes/color
 const INERTIA_RATIO: f32 = 5f32 / 6f32; // bigger number => more inertia
 
 pub fn precomp_vis(RiffWavePcm { samples, samples_per_second }: RiffWavePcm) {
-	let spectra = gen_spectrogram(crate::precomp_vis::sliding_spectra(
-		samples
-			.into_iter()
-			.map(|x| x as f32 / i16::MAX as f32)
-			.collect(),
-	));
+	let spectra = gen_spectrogram(
+		crate::precomp_vis::sliding_spectra(
+			samples
+				.into_iter()
+				.map(|x| x as f32 / i16::MAX as f32)
+				.collect(),
+		),
+		0.005,
+	);
 	crate::precomp_vis::run_window(spectra, samples_per_second / STEP_SIZE as u32);
 }
 struct PlayState {

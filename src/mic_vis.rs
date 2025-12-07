@@ -64,7 +64,7 @@ pub fn mic_vis() {
 	let send_proxy = event_loop.create_proxy();
 
 	fn mic_gain(x: f32) -> f32 {
-		x * 8.0f32
+		x * 40.0f32
 	}
 
 	thread::spawn(move || {
@@ -79,9 +79,12 @@ pub fn mic_vis() {
 			let _ = mic_cons.peek_slice(&mut incoming);
 			let _ = send_proxy.send_event(FftEvent::PixelsReady {
 				pix: Arc::from(
-					render_spectrum(&fft_spectrum(
-						&mut (incoming.iter().map(|x| mic_gain(*x))).collect::<Vec<f32>>(),
-					))
+					render_spectrum(
+						&fft_spectrum(
+							&mut (incoming.iter().map(|x| mic_gain(*x))).collect::<Vec<f32>>(),
+						),
+						0.005,
+					)
 					.into_boxed_slice(),
 				),
 			});
