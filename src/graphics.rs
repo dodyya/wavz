@@ -3,7 +3,6 @@ use crate::fft::Float;
 use crate::rgba::*;
 
 // TODO: figure out if theres an easier way
-/// made because `f32` doesn't implement `Ord`, so can't just use the max or min methods
 
 pub fn gen_spectrogram(spectra: BoxSlice2D<Float>) -> BoxSlice2D<Rgba> {
 	let width = spectra.height; //TRANSPOSE!

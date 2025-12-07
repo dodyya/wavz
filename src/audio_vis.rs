@@ -1,3 +1,4 @@
+use crate::fft::{STEP_SIZE, WINDOW_SIZE};
 use std::fs::File;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -16,6 +17,9 @@ use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 use crate::parser::{Channels, MmapedRiffPcm, from_mmap};
+
+const WIDTH: usize = 2000;
+const RGBA: usize = 4;
 
 pub fn audio_vis(file_path: String) {
 	let file_buf: &'static [u8] = mmap_file(Path::new(&file_path));
@@ -131,7 +135,7 @@ fn run_window(
 	let mut input = WinitInputHelper::new();
 
 	let window = {
-		let size = PhysicalSize::new(800, 600);
+		let size = PhysicalSize::new(WIDTH as u32, WINDOW_SIZE as u32 / 2);
 		WindowBuilder::new()
 			.with_title("wavez")
 			.with_inner_size(size)
@@ -174,7 +178,19 @@ fn run_window(
 			}
 
 			// perform fft. idk this is not my job
-			frame.fill(255);
+			//
+			let snapped_idx = sample_idx - sample_idx % (STEP_SIZE);
+
+			let spectra = crate::graphics::gen_spectrogram(crate::precomp_vis::sliding_spectra(
+				samples[channels as usize * snapped_idx
+					..channels as usize * snapped_idx + WIDTH * STEP_SIZE + WINDOW_SIZE]
+					.into_iter()
+					.map(|&x| x as f32 / i16::MAX as f32)
+					.collect(),
+			));
+
+			frame.copy_from_slice(bytemuck::checked::cast_slice(&spectra.data));
+			// frame.fill(255);
 
 			if pixels.render().is_err() {
 				window_hook.exit();

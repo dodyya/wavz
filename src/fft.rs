@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 
 pub const WINDOW_SIZE: usize = 1 << 12; // 4096
-pub const STEP_SIZE: usize = 1 << 8; // 256
+pub const STEP_SIZE: usize = 1 << 9; // 256
 
 struct Cplx<T> {
 	pub re: T,
@@ -72,8 +72,8 @@ fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
 }
 
 fn spectrum_into(out: &mut [Float], fr: &[Float], fi: &[Float]) {
-	for i in 0..WINDOW_SIZE / 2 {
-		out[i] = fr[i].hypot(fi[i]);
+	for (e, i) in (0..WINDOW_SIZE / 2).rev().enumerate() {
+		out[e] = fr[i].hypot(fi[i]);
 	}
 }
 
