@@ -23,7 +23,8 @@ use crate::rgba::Rgba;
 // to have a scrolling vertical bar that represents "now".
 // Ought to defer until we have audio.
 const PIXEL_SCALE: usize = 2;
-const MAX_WIDTH: usize = 1500; // Maximum screen width, determines playability
+const MAX_WIDTH: u32 = 5000; // Maximum screen width
+const MAX_HEIGHT: u32 = 2000; // Maximum screen height,
 const RGBA: usize = 4; // Magic number for bytes/color
 const INERTIA_RATIO: f32 = 5f32 / 6f32; // bigger number => more inertia
 
@@ -125,22 +126,21 @@ pub fn run_window(spectra: BoxSlice2D<Rgba>, ffts_per_second: u32) {
 
 	let event_loop = EventLoop::new().unwrap();
 	let mut input = WinitInputHelper::new();
-	let mut play: Option<PlayState> = (domain > MAX_WIDTH).then_some(PlayState {
+	let mut ps: PlayState = PlayState {
 		x_offset: 0,
 		scroll_v: 0.0,
 		playing: None,
 		ffts_per_second,
-	});
-	let height = range;
-	let width = domain.clamp(0, MAX_WIDTH);
+	};
+	let mut height = range;
+	let mut width = domain.clamp(0, MAX_WIDTH as usize);
 
 	let window = {
 		let size = PhysicalSize::new((width * PIXEL_SCALE) as u32, (height * PIXEL_SCALE) as u32);
 		WindowBuilder::new()
 			.with_title("")
 			.with_inner_size(size)
-			.with_min_inner_size(size)
-			.with_resizable(false)
+			.with_resizable(true)
 			.build(&event_loop)
 			.unwrap()
 	};
@@ -158,17 +158,16 @@ pub fn run_window(spectra: BoxSlice2D<Rgba>, ffts_per_second: u32) {
 		} = event
 		{
 			let frame = pixels.frame_mut();
-			if let Some(ps) = play.as_mut() {
-				for y in 0..range {
-					//Drawing the horizontal subview.
-					frame[RGBA * width * y..RGBA * width * (y + 1)].copy_from_slice(cast_slice(
-						&img[(ps.x_offset + y * domain)..(ps.x_offset + y * domain + width)],
-					));
-				}
-				ps.inc();
-			} else {
-				frame.copy_from_slice(cast_slice(&img));
+			for y in 0..height {
+				let img_y = if height < range { y + range - height } else { y };
+				//Drawing the horizontal subview.
+				let hor_subview = cast_slice(
+					&img[(ps.x_offset + img_y * domain)..(ps.x_offset + img_y * domain + width)],
+				);
+				frame[RGBA * width * y..RGBA * width * (y + 1)].copy_from_slice(hor_subview);
 			}
+
+			ps.inc();
 
 			if pixels.render().is_err() {
 				elwt.exit();
@@ -182,18 +181,27 @@ pub fn run_window(spectra: BoxSlice2D<Rgba>, ffts_per_second: u32) {
 				return;
 			}
 
-			if let Some(ps) = play.as_mut() {
-				ps.handle_scroll(input.scroll_diff().1, domain as isize, width as isize);
+			ps.handle_scroll(input.scroll_diff().1, domain as isize, width as isize);
 
-				if input.key_pressed(KeyCode::Space) {
-					ps.tog();
-				}
-
-				window.set_title(&format!("{domain} samples generated. {ps:?}"));
+			if input.key_pressed(KeyCode::Space) {
+				ps.tog();
 			}
+
+			window.set_title(&format!("{domain} samples generated. {ps:?}"));
 
 			window.request_redraw();
 		}
+
+		if let Event::WindowEvent {
+			event: WindowEvent::Resized(size),
+			..
+		} = event
+		{
+			width = size.width.clamp(1, MAX_WIDTH) as usize;
+			height = size.height.clamp(1, MAX_HEIGHT) as usize;
+			pixels.resize_surface(width as u32, height as u32).unwrap();
+			pixels.resize_buffer(width as u32, height as u32).unwrap();
+		};
 	});
 }
 

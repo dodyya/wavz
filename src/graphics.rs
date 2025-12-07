@@ -12,7 +12,7 @@ pub fn gen_spectrogram(spectra: BoxSlice2D<Float>, range: f32) -> BoxSlice2D<Rgb
 
 	for x in 0..width {
 		let spectrum = spectra.row(x);
-		for (y, rgba) in render_spectrum(spectrum, range).into_iter().enumerate() {
+		for (y, rgba) in render_spectrum_iter(spectrum, range).enumerate() {
 			let start = x + y * width;
 			img[start] = rgba;
 		}
@@ -26,14 +26,21 @@ pub fn gen_spectrogram(spectra: BoxSlice2D<Float>, range: f32) -> BoxSlice2D<Rgb
 }
 
 pub fn render_spectrum(spectrum: &[f32], range: f32) -> Vec<Rgba> {
+	render_spectrum_iter(spectrum, range).collect()
+}
+
+pub fn render_spectrum_iter(spectrum: &[f32], range: f32) -> impl Iterator<Item = Rgba> {
 	// const RANGE: f32 = 0.005;
-	const CUTOFF: f32 = 0.15; // Visual cutoff for what is black
-	spectrum
-		.iter()
-		.enumerate()
-		.map(|(e, &value)| {
-			let normed_hue = (1.001f32.powi(e as i32) * (value) / range).clamp(0.0, 1.0);
-			if normed_hue > CUTOFF { Rgba::hue(normed_hue) } else { Rgba::BLACK }
-		})
-		.collect()
+	const CUTOFF: f32 = 0.2; // Visual cutoff for what is black
+	let growth = 1.001f32;
+
+	spectrum.iter().scan(0.2f32, move |factor, &value| {
+		let normed_hue = (*factor * (value) / range).clamp(0.0, 1.0);
+		*factor = *factor * growth;
+		if normed_hue > CUTOFF {
+			Some(Rgba::hue(normed_hue))
+		} else {
+			Some(Rgba::BLACK)
+		}
+	})
 }

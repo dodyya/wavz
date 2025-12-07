@@ -29,7 +29,7 @@ pub fn audio_vis(file_path: String) {
 		samples,
 	} = from_mmap(file_buf);
 	let (tx, rx) = channel();
-	dbg!(samples.len() as f64 / channels as u8 as f64 / samples_per_second as f64);
+	// dbg!(samples.len() as f64 / channels as u8 as f64 / samples_per_second as f64);
 	let _dontdrop =
 		spawn_paused_child_audio_thread(rx, samples, samples_per_second, channels as u16);
 	run_window(tx, samples, samples_per_second, channels);
@@ -135,7 +135,7 @@ fn run_window(
 	let mut input = WinitInputHelper::new();
 	let mut pixel_scale = 2;
 	let mut width = WIDTH as u32;
-	let mut range: f32 = 0.005;
+	let mut range: f32 = 0.05;
 
 	let window = {
 		let size = PhysicalSize::new(width, WINDOW_SIZE as u32 / 2);
@@ -180,25 +180,22 @@ fn run_window(
 				sample_idx = (time_idx.as_secs_f64() * samples_per_second as f64) as usize;
 			}
 
-			// perform fft. idk this is not my job
-			//
 			let snapped_idx = sample_idx - sample_idx % (STEP_SIZE);
 
 			let spectra = crate::graphics::gen_spectrogram(
 				crate::precomp_vis::sliding_spectra(
 					samples[channels as usize * snapped_idx
-						..channels as usize * snapped_idx
-							+ (width / pixel_scale) as usize * STEP_SIZE
-							+ WINDOW_SIZE]
-						.into_iter()
-						.map(|&x| x as f32 / i16::MAX as f32)
+						..channels as usize
+							* (snapped_idx
+								+ (width / pixel_scale) as usize * STEP_SIZE
+								+ WINDOW_SIZE)]
+						.chunks_exact(2) //Discard odd samples :p
+						.map(|x| x[0] as f32 / i16::MAX as f32)
 						.collect(),
 				),
 				range,
 			);
-
 			let spectra = bytemuck::checked::cast_slice(&spectra.data);
-
 			frame.copy_from_slice(&spectra[spectra.len() - frame.len()..]);
 
 			if pixels.render().is_err() {
