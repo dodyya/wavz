@@ -19,7 +19,7 @@ use winit_input_helper::WinitInputHelper;
 use crate::parser::{Channels, MmapedRiffPcm, from_mmap};
 
 const WIDTH: usize = 2000;
-const RGBA: usize = 4;
+const MAX_HEIGHT: u32 = WINDOW_SIZE as u32 / 2;
 
 pub fn audio_vis(file_path: String) {
 	let file_buf: &'static [u8] = mmap_file(Path::new(&file_path));
@@ -133,6 +133,7 @@ fn run_window(
 ) {
 	let event_loop = EventLoop::new().unwrap();
 	let mut input = WinitInputHelper::new();
+	let mut width = WIDTH;
 
 	let window = {
 		let size = PhysicalSize::new(WIDTH as u32, WINDOW_SIZE as u32 / 2);
@@ -183,19 +184,34 @@ fn run_window(
 
 			let spectra = crate::graphics::gen_spectrogram(crate::precomp_vis::sliding_spectra(
 				samples[channels as usize * snapped_idx
-					..channels as usize * snapped_idx + WIDTH * STEP_SIZE + WINDOW_SIZE]
+					..channels as usize * snapped_idx + width * STEP_SIZE + WINDOW_SIZE]
 					.into_iter()
 					.map(|&x| x as f32 / i16::MAX as f32)
 					.collect(),
 			));
 
-			frame.copy_from_slice(bytemuck::checked::cast_slice(&spectra.data));
-			// frame.fill(255);
+			let spectra = bytemuck::checked::cast_slice(&spectra.data);
+
+			frame.copy_from_slice(&spectra[spectra.len() - frame.len()..]);
 
 			if pixels.render().is_err() {
 				window_hook.exit();
 				return;
 			}
+		}
+
+		if let Event::WindowEvent {
+			event: WindowEvent::Resized(size),
+			..
+		} = event
+		{
+			pixels
+				.resize_surface(size.width, size.height.clamp(1, MAX_HEIGHT))
+				.unwrap();
+			pixels
+				.resize_buffer(size.width, size.height.clamp(1, MAX_HEIGHT))
+				.unwrap();
+			width = size.width as usize;
 		}
 
 		if input.update(&event) {
