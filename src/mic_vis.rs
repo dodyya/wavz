@@ -13,7 +13,7 @@ use winit::keyboard::KeyCode;
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-use crate::fft::{STEP_SIZE, WINDOW_SIZE, fft_spectrum};
+use crate::fft::{SPECTRUM_SIZE, STEP_SIZE, WINDOW_SIZE, fft_spectrum};
 use crate::graphics::render_spectrum;
 use crate::rgba::Rgba;
 
@@ -83,7 +83,7 @@ pub fn mic_vis() {
 						&fft_spectrum(
 							&mut (incoming.iter().map(|x| mic_gain(*x))).collect::<Vec<f32>>(),
 						),
-						0.005,
+						0.1,
 					)
 					.into_boxed_slice(),
 				),
@@ -99,16 +99,15 @@ pub fn mic_vis() {
 
 fn run_window(event_loop: EventLoop<FftEvent>) {
 	let mut input = WinitInputHelper::new();
-	let height = WINDOW_SIZE / 2;
-	let width = MAX_WIDTH;
+	let mut height = SPECTRUM_SIZE;
+	let mut width = MAX_WIDTH;
 
 	let window = {
 		let size = PhysicalSize::new((width * PIXEL_SCALE) as u32, (height * PIXEL_SCALE) as u32);
 		WindowBuilder::new()
 			.with_title("")
 			.with_inner_size(size)
-			.with_min_inner_size(size)
-			.with_resizable(false)
+			.with_min_inner_size(PhysicalSize::new(1, 1))
 			.build(&event_loop)
 			.unwrap()
 	};
@@ -142,8 +141,9 @@ fn run_window(event_loop: EventLoop<FftEvent>) {
 
 			let x = width - 1;
 			for y in 0..height {
+				let source_y = SPECTRUM_SIZE - height + y;
 				frame[(y * width + x) * RGBA..(y * width + x + 1) * RGBA]
-					.copy_from_slice(must_cast_ref::<_, [u8; 4]>(&pix[y]))
+					.copy_from_slice(must_cast_ref::<_, [u8; 4]>(&pix[source_y]))
 			}
 		}
 
@@ -154,6 +154,20 @@ fn run_window(event_loop: EventLoop<FftEvent>) {
 			}
 
 			window.request_redraw();
+		}
+
+		if let Event::WindowEvent {
+			event: WindowEvent::Resized(size),
+			..
+		} = event
+		{
+			let _ = pixels.resize_buffer(
+				size.width / PIXEL_SCALE as u32,
+				size.height / PIXEL_SCALE as u32,
+			);
+			let _ = pixels.resize_surface(size.width, size.height);
+			width = size.width as usize / PIXEL_SCALE;
+			height = size.height as usize / PIXEL_SCALE;
 		}
 	});
 }
