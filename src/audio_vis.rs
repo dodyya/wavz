@@ -229,9 +229,11 @@ fn run_window(
 			);
 			// If we already have a full screen, dump
 			// that many columns from fft_buf via pop_slice into a mutable slice of a trashcan buffer
-			if fft_buf.occupied_len() > (SPECTRUM_SIZE as u32 * frame_width) as usize {
-				let _ = fft_buf
-					.pop_slice(&mut discard_buf[..delta * SPECTRUM_SIZE * channels as usize]);
+			if fft_buf.occupied_len() > SPECTRUM_SIZE * frame_width as usize {
+				let _ = fft_buf.pop_slice(
+					&mut discard_buf
+						[..fft_buf.occupied_len() - SPECTRUM_SIZE * frame_width as usize],
+				);
 			}
 			if pixels.render().is_err() {
 				window_hook.exit();
