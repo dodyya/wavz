@@ -1,4 +1,4 @@
-use crate::fft::Slice2D;
+use crate::fft::{MutSlice2D, Slice2D, sliding_spectra};
 use crate::fft::{SPECTRUM_SIZE, STEP_SIZE, WINDOW_SIZE};
 use ringbuf::{HeapRb, traits::Consumer as _, traits::Observer as _, traits::Producer as _};
 use std::fs::File;
@@ -157,7 +157,7 @@ fn run_window(
 	let mut started_playing_at = Option::<Instant>::None;
 
 	let mut pixel_scale = 1;
-	let mut range: f32 = 0.05;
+	let mut sens: f32 = 0.05;
 
 	const PRECOMPUTE: usize = 10000; //Maximum number of FFTs we expect to ever have to precompute
 
@@ -202,16 +202,19 @@ fn run_window(
 			// }
 			prev_fft_idx = curr_fft_index;
 
-			let new_ffts = crate::precomp_vis::sliding_spectra(
+			let new_ffts = sliding_spectra(
 				&samples[fft_head
 					..fft_head + ((delta - 1) * STEP_SIZE + WINDOW_SIZE) * channels as usize]
-					.chunks_exact(2)
+					.chunks_exact(channels as usize)
 					.map(|x| x[0] as f32 / i16::MAX as f32)
-					.collect(),
+					.collect::<Vec<_>>(),
 			);
+			let _new_ffts_len = (delta - 1) * SPECTRUM_SIZE;
 
 			// Compute that many new FFTs and push them into fft_buf
 			fft_buf.push_slice(&new_ffts.data);
+			// fft_buf.vacant_slices_mut().0[..new_ffts_len]]
+			/*fft_buf.*/
 			fft_head += delta * STEP_SIZE * channels as usize; //Advance fft head
 
 			let whatever = SPECTRUM_SIZE * frame_width as usize; //Yeah no better name for this
@@ -219,13 +222,15 @@ fn run_window(
 			fft_buf.peek_slice(&mut read_buf[..whatever]);
 
 			let _ = crate::graphics::gen_spectrogram_into(
-				bytemuck::checked::cast_slice_mut(frame),
 				Slice2D {
 					data: &read_buf[..whatever],
 					width: SPECTRUM_SIZE,
-					height: whatever / SPECTRUM_SIZE,
 				},
-				range,
+				sens,
+				MutSlice2D {
+					data: bytemuck::checked::cast_slice_mut(frame),
+					width: frame_width as usize,
+				},
 			);
 			// If we already have a full screen, dump
 			// that many columns from fft_buf via pop_slice into a mutable slice of a trashcan buffer
@@ -295,10 +300,10 @@ fn run_window(
 			}
 
 			if input.key_pressed(KeyCode::ArrowUp) {
-				range /= 1.1;
+				sens /= 1.1;
 			}
 			if input.key_pressed(KeyCode::ArrowDown) {
-				range *= 1.1;
+				sens *= 1.1;
 			}
 
 			window.request_redraw();

@@ -14,8 +14,8 @@ use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 use crate::fft::BoxSlice2D;
-use crate::fft::fft_spectrum_into;
-use crate::fft::{STEP_SIZE, WINDOW_SIZE};
+use crate::fft::STEP_SIZE;
+use crate::fft::sliding_spectra;
 use crate::rgba::Rgba;
 
 // TODO: lower the scope of some of these constants (move them into functions or structs if not used everywhere)
@@ -30,11 +30,11 @@ const INERTIA_RATIO: f32 = 5f32 / 6f32; // bigger number => more inertia
 
 pub fn precomp_vis(RiffWavePcm { samples, samples_per_second }: RiffWavePcm) {
 	let spectra = gen_spectrogram(
-		crate::precomp_vis::sliding_spectra(
+		sliding_spectra(
 			&samples
 				.into_iter()
 				.map(|x| x as f32 / i16::MAX as f32)
-				.collect(),
+				.collect::<Vec<_>>(),
 		)
 		.unbox(),
 		0.005,
@@ -122,7 +122,7 @@ impl Debug for PlayState {
 
 pub fn run_window(spectra: BoxSlice2D<Rgba>, ffts_per_second: u32) {
 	let domain = spectra.width;
-	let range = spectra.height;
+	let range = spectra.data.len() / domain;
 	let img = spectra.data;
 
 	let event_loop = EventLoop::new().unwrap();
@@ -204,24 +204,4 @@ pub fn run_window(spectra: BoxSlice2D<Rgba>, ffts_per_second: u32) {
 			pixels.resize_buffer(width as u32, height as u32).unwrap();
 		};
 	});
-}
-
-pub fn sliding_spectra(samples: &Box<[f32]>) -> BoxSlice2D<f32> {
-	// println!("Samples.len: {}", samples.len());
-	let num_ffts = (samples.len() - WINDOW_SIZE) / STEP_SIZE;
-	let mut start = 0;
-	let mut out = BoxSlice2D::<f32>::new(WINDOW_SIZE / 2, num_ffts);
-
-	for i in 0..num_ffts {
-		let mut fr = Box::new([0.0; WINDOW_SIZE]);
-
-		for j in 0..WINDOW_SIZE {
-			fr[j] = samples[j + start];
-		}
-
-		fft_spectrum_into(out.row_mut(i), fr.as_mut());
-		start += STEP_SIZE;
-	}
-
-	out
 }

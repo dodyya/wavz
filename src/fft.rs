@@ -12,13 +12,16 @@ struct Cplx<T> {
 pub struct BoxSlice2D<T> {
 	pub data: Box<[T]>,
 	pub width: usize,
-	pub height: usize,
 }
 
 pub struct Slice2D<'a, T> {
 	pub data: &'a [T],
 	pub width: usize,
-	pub height: usize,
+}
+
+pub struct MutSlice2D<'a, T> {
+	pub data: &'a mut [T],
+	pub width: usize,
 }
 
 impl<T> Slice2D<'_, T> {
@@ -27,13 +30,13 @@ impl<T> Slice2D<'_, T> {
 	}
 }
 
-impl<T: Clone> From<Slice2D<'_, T>> for BoxSlice2D<T> {
-	fn from(slice: Slice2D<'_, T>) -> Self {
-		BoxSlice2D {
-			data: slice.data.into(),
-			width: slice.width,
-			height: slice.height,
-		}
+impl<T> MutSlice2D<'_, T> {
+	pub fn row(&self, row: usize) -> &[T] {
+		&self.data[row * self.width..(row + 1) * self.width]
+	}
+
+	pub fn row_mut(&mut self, row: usize) -> &mut [T] {
+		&mut self.data[row * self.width..(row + 1) * self.width]
 	}
 }
 
@@ -43,7 +46,6 @@ impl<T: Default + Copy> BoxSlice2D<T> {
 		BoxSlice2D {
 			data: vec![Default::default(); width * height].into_boxed_slice(),
 			width,
-			height,
 		}
 	}
 
@@ -55,33 +57,17 @@ impl<T: Default + Copy> BoxSlice2D<T> {
 		&self.data[row * self.width..(row + 1) * self.width]
 	}
 
-	pub fn concatenate(&self, other: &Self) -> Self {
-		assert_eq!(self.height, other.height);
-		//dbg!(self.width, other.width, self.height, other.height);
-		let mut out = Self::new(self.width + other.width, self.height);
-		for i in 0..self.height {
-			out.row_mut(i)[..self.width].copy_from_slice(self.row(i));
-			out.row_mut(i)[self.width..].copy_from_slice(other.row(i));
-		}
-		out
-	}
-
-	// pub fn drain_cols(&mut self, count: usize) {
-	// 	self.data = self
-	// 		.data
-	// 		.chunks_exact_mut(self.width)
-	// 		.map(|chunk| chunk[count..].to_owned())
-	// 		.flatten()
-	// 		.collect::<Vec<_>>()
-	// 		.into_boxed_slice();
-	// 	self.width -= count;
-	// }
-	//
 	pub fn unbox(&self) -> Slice2D<'_, T> {
 		Slice2D {
 			data: self.data.as_ref(),
 			width: self.width,
-			height: self.height,
+		}
+	}
+
+	pub fn unbox_mut(&mut self) -> MutSlice2D<'_, T> {
+		MutSlice2D {
+			data: self.data.as_mut(),
+			width: self.width,
 		}
 	}
 }
@@ -99,16 +85,17 @@ pub(crate) static SINE: LazyLock<Vec<Float>> = LazyLock::new(|| {
 /// Takes an fft result and returns the magnitude vector of the Nyquist range
 fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
 	let mut v = vec![0.0; WINDOW_SIZE / 2];
-	spectrum_into(&mut v, fr, fi);
+	spectrum_into(fr, fi, &mut v);
 	v
 }
 
-fn spectrum_into(out: &mut [Float], fr: &[Float], fi: &[Float]) {
+fn spectrum_into(fr: &[Float], fi: &[Float], out: &mut [Float]) {
 	for (e, i) in (0..WINDOW_SIZE / 2).rev().enumerate() {
 		out[e] = fr[i].hypot(fi[i]);
 	}
 }
 
+/// Takes only the real signal and performs fft + spectrum
 pub fn fft_spectrum(real: &mut [Float]) -> Vec<Float> {
 	// assert_eq!(RESOLUTION, v.len());
 	let mut imag = vec![0.0; WINDOW_SIZE];
@@ -116,15 +103,15 @@ pub fn fft_spectrum(real: &mut [Float]) -> Vec<Float> {
 	spectrum(&real, &imag)
 }
 
-pub fn fft_spectrum_into(out: &mut [Float], input: &mut [Float]) {
+pub fn fft_spectrum_into(input: &mut [Float], out: &mut [Float]) {
 	let mut fi = vec![0.0; WINDOW_SIZE];
 	fft_inplace(input, &mut fi);
-	spectrum_into(out, input, &fi);
+	spectrum_into(input, &fi, out);
 }
 
 /// Takes in a complex slice as real and imaginary parts, and
 /// performs the FFT in-place. Magic.
-pub(crate) fn fft_inplace(fr: &mut [Float], fi: &mut [Float]) {
+pub fn fft_inplace(fr: &mut [Float], fi: &mut [Float]) {
 	assert_eq!(WINDOW_SIZE, fr.len());
 	assert!(WINDOW_SIZE.is_power_of_two() && fi.len() == WINDOW_SIZE);
 
@@ -177,3 +164,48 @@ pub(crate) fn fft_inplace(fr: &mut [Float], fi: &mut [Float]) {
 		temp_len = combined_len;
 	}
 }
+
+pub fn sliding_spectra(samples: &[f32]) -> BoxSlice2D<f32> {
+	let num_ffts = (samples.len() - WINDOW_SIZE) / STEP_SIZE;
+	let mut out = BoxSlice2D::<f32>::new(SPECTRUM_SIZE, num_ffts);
+	sliding_spectra_into(samples, out.unbox_mut());
+
+	out
+}
+
+pub fn sliding_spectra_into(samples: &[f32], mut out: MutSlice2D<f32>) {
+	let num_ffts = (samples.len() - WINDOW_SIZE) / STEP_SIZE;
+	let mut start = 0;
+	let mut fr = Box::new([0.0; WINDOW_SIZE]);
+
+	for i in 0..num_ffts {
+		for j in 0..WINDOW_SIZE {
+			fr[j] = samples[j + start];
+		}
+
+		fft_spectrum_into(fr.as_mut(), out.row_mut(i));
+		start += STEP_SIZE;
+	}
+}
+
+// pub fn sliding_spectra_iter(samples: &[f32]) -> impl Iterator<Item = f32> {
+// 	let num_ffts = (samples.len() - WINDOW_SIZE) / STEP_SIZE;
+// 	let mut out = BoxSlice2D::<f32>::new(SPECTRUM_SIZE, num_ffts);
+// 	let mut start = 0;
+// 	let mut fr = Box::new([0.0; WINDOW_SIZE]);
+
+// 	std::iter::from_fn(move || {
+// 		if start + WINDOW_SIZE > samples.len() {
+// 			None
+// 		} else {
+// 			for j in 0..WINDOW_SIZE {
+// 				fr[j] = samples[j + start];
+// 			}
+
+// 			fft_spectrum_into(fr.as_mut(), out.row_mut(0));
+// 			start += STEP_SIZE;
+
+// 			Some(out.clone())
+// 		}
+// 	})
+// }
