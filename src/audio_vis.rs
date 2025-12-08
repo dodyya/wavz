@@ -173,6 +173,7 @@ fn run_window(
 		} = event
 		{
 			let frame = pixels.frame_mut();
+			let frame_width = display_width / pixel_scale;
 			let mut time_idx = if let Some(inst) = started_playing_at {
 				play_time_from_start + inst.elapsed()
 			} else {
@@ -194,11 +195,11 @@ fn run_window(
 			let curr_fft_index = sample_idx / STEP_SIZE;
 			let delta = curr_fft_index - prev_fft_idx;
 			if delta == 0 {
-				println!("No visual change since last frame");
+				// println!("No visual change since last frame");
 				return;
-			} else {
-				println!("We need to advance by {delta} new ffts this frame!")
-			}
+			} //else {
+			// 	println!("We need to advance by {delta} new ffts this frame!")
+			// }
 			prev_fft_idx = curr_fft_index;
 
 			let new_ffts = crate::precomp_vis::sliding_spectra(
@@ -208,11 +209,12 @@ fn run_window(
 					.map(|x| x[0] as f32 / i16::MAX as f32)
 					.collect(),
 			);
+
 			// Compute that many new FFTs and push them into fft_buf
 			fft_buf.push_slice(&new_ffts.data);
 			fft_head += delta * STEP_SIZE * channels as usize; //Advance fft head
 
-			let whatever = SPECTRUM_SIZE * display_width as usize / pixel_scale as usize; //Yeah no better name for this
+			let whatever = SPECTRUM_SIZE * frame_width as usize; //Yeah no better name for this
 
 			fft_buf.peek_slice(&mut read_buf[..whatever]);
 
@@ -227,9 +229,7 @@ fn run_window(
 			);
 			// If we already have a full screen, dump
 			// that many columns from fft_buf via pop_slice into a mutable slice of a trashcan buffer
-			if fft_buf.occupied_len()
-				> (SPECTRUM_SIZE as u32 * display_width / pixel_scale) as usize
-			{
+			if fft_buf.occupied_len() > (SPECTRUM_SIZE as u32 * frame_width) as usize {
 				let _ = fft_buf
 					.pop_slice(&mut discard_buf[..delta * SPECTRUM_SIZE * channels as usize]);
 			}
@@ -249,6 +249,13 @@ fn run_window(
 					(size.height / pixel_scale).clamp(1, MAX_HEIGHT / pixel_scale),
 				)
 				.unwrap();
+			// println!(
+			// 	"New dimensions are {} by {} in the surface, and {} by {} in the buffer",
+			// 	size.width,
+			// 	size.height,
+			// 	size.width / pixel_scale,
+			// 	size.height / pixel_scale
+			// );
 		};
 
 		if input.update(&event) {

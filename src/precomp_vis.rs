@@ -35,7 +35,8 @@ pub fn precomp_vis(RiffWavePcm { samples, samples_per_second }: RiffWavePcm) {
 				.into_iter()
 				.map(|x| x as f32 / i16::MAX as f32)
 				.collect(),
-		),
+		)
+		.unbox(),
 		0.005,
 	);
 	crate::precomp_vis::run_window(spectra, samples_per_second / STEP_SIZE as u32);
@@ -206,7 +207,7 @@ pub fn run_window(spectra: BoxSlice2D<Rgba>, ffts_per_second: u32) {
 }
 
 pub fn sliding_spectra(samples: &Box<[f32]>) -> BoxSlice2D<f32> {
-	println!("Samples.len: {}", samples.len());
+	// println!("Samples.len: {}", samples.len());
 	let num_ffts = (samples.len() - WINDOW_SIZE) / STEP_SIZE;
 	let mut start = 0;
 	let mut out = BoxSlice2D::<f32>::new(WINDOW_SIZE / 2, num_ffts);

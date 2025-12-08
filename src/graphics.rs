@@ -4,30 +4,32 @@ use crate::rgba::*;
 
 // TODO: figure out if theres an easier way
 
-pub fn gen_spectrogram(spectra: BoxSlice2D<Float>, range: f32) -> BoxSlice2D<Rgba> {
+pub fn gen_spectrogram(spectra: Slice2D<Float>, range: f32) -> BoxSlice2D<Rgba> {
 	let mut img = vec![Rgba::BLACK; spectra.width * spectra.height];
 
-	gen_spectrogram_into(&mut img, spectra.unbox(), range);
+	let width = spectra.height;
+	let height = spectra.width;
+	gen_spectrogram_into(&mut img, spectra, range);
 
-	BoxSlice2D {
-		width: spectra.height, //TRANSPOSE
-		height: spectra.width as usize,
+	let out = BoxSlice2D {
+		width, //TRANSPOSE
+		height,
 		data: img.into_boxed_slice(),
-	}
+	};
+	out
 }
 
 pub fn gen_spectrogram_into(out: &mut [Rgba], spectra: Slice2D<Float>, range: f32) {
-	// println!(
-	// 	"Generating spectrogram: w:{}, h:{}",
-	// 	spectra.width, spectra.height,
-	// );
-
-	//We are transposing the spectrogram. Spectra is a "slice of slices", where [   ][   ][   ] they're concatenated like that.
-	// Thus, its height is the number of spectrums, and its width is SPECTRUM_SIZE.
 	let n_spectra = spectra.height;
+	let n_rows_visible = out.len() / n_spectra;
+	let n_rows_invisible = spectra.width - n_rows_visible; // Yeah this is shitty and tight coupling and this logic needs to go elsewhere.
+
 	for x in 0..n_spectra {
 		let spectrum = spectra.row(x);
-		for (y, rgba) in render_spectrum_iter(spectrum, range).enumerate() {
+		for (y, rgba) in render_spectrum_iter(spectrum, range)
+			.skip(n_rows_invisible)
+			.enumerate()
+		{
 			let start = y * n_spectra + x;
 			out[start] = rgba;
 		}
