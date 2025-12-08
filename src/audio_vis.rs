@@ -162,8 +162,8 @@ fn run_window(
 	const PRECOMPUTE: usize = 10000; //Maximum number of FFTs we expect to ever have to precompute
 
 	let mut fft_buf = HeapRb::<f32>::new(PRECOMPUTE * SPECTRUM_SIZE);
-	let mut discard_buf = Box::new([0.0f32; PRECOMPUTE * SPECTRUM_SIZE]);
-	let mut read_buf = Box::new([0.0f32; PRECOMPUTE * SPECTRUM_SIZE]);
+	let mut discard_buf: Box<[f32]> = vec![0.0f32; PRECOMPUTE * SPECTRUM_SIZE].into();
+	let mut read_buf: Box<[f32]> = vec![0.0f32; PRECOMPUTE * SPECTRUM_SIZE].into();
 	let mut prev_fft_idx = 0;
 	let mut fft_head = 0;
 	let _ = event_loop.run(|event, window_hook| {
