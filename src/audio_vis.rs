@@ -1,4 +1,6 @@
-use crate::fft::{STEP_SIZE, WINDOW_SIZE};
+use crate::fft::Slice2D;
+use crate::fft::{SPECTRUM_SIZE, STEP_SIZE, WINDOW_SIZE};
+use ringbuf::{HeapRb, traits::Consumer as _, traits::Observer as _, traits::Producer as _};
 use std::fs::File;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -133,12 +135,10 @@ fn run_window(
 ) {
 	let event_loop = EventLoop::new().unwrap();
 	let mut input = WinitInputHelper::new();
-	let mut pixel_scale = 2;
-	let mut width = WIDTH as u32;
-	let mut range: f32 = 0.05;
+	let mut display_width = WIDTH as u32;
 
 	let window = {
-		let size = PhysicalSize::new(width, WINDOW_SIZE as u32 / 2);
+		let size = PhysicalSize::new(display_width, WINDOW_SIZE as u32 / 2);
 		WindowBuilder::new()
 			.with_title("wavez")
 			.with_inner_size(size)
@@ -156,6 +156,16 @@ fn run_window(
 	let mut play_time_from_start = Duration::ZERO;
 	let mut started_playing_at = Option::<Instant>::None;
 
+	let mut pixel_scale = 1;
+	let mut range: f32 = 0.05;
+
+	const PRECOMPUTE: usize = 10000; //Maximum number of FFTs we expect to ever have to precompute
+
+	let mut fft_buf = HeapRb::<f32>::new(PRECOMPUTE * SPECTRUM_SIZE);
+	let mut discard_buf = Box::new([0.0f32; PRECOMPUTE * SPECTRUM_SIZE]);
+	let mut read_buf = Box::new([0.0f32; PRECOMPUTE * SPECTRUM_SIZE]);
+	let mut prev_fft_idx = 0;
+	let mut fft_head = 0;
 	let _ = event_loop.run(|event, window_hook| {
 		if let Event::WindowEvent {
 			event: WindowEvent::RedrawRequested,
@@ -180,24 +190,49 @@ fn run_window(
 				sample_idx = (time_idx.as_secs_f64() * samples_per_second as f64) as usize;
 			}
 
-			let snapped_idx = sample_idx - sample_idx % (STEP_SIZE);
+			// Calculate how many pixels just went off screen.
+			let curr_fft_index = sample_idx / STEP_SIZE;
+			let delta = curr_fft_index - prev_fft_idx;
+			if delta == 0 {
+				println!("No visual change since last frame");
+				return;
+			} else {
+				println!("We need to advance by {delta} new ffts this frame!")
+			}
+			prev_fft_idx = curr_fft_index;
 
-			let spectra = crate::graphics::gen_spectrogram(
-				crate::precomp_vis::sliding_spectra(
-					samples[channels as usize * snapped_idx
-						..channels as usize
-							* (snapped_idx
-								+ (width / pixel_scale) as usize * STEP_SIZE
-								+ WINDOW_SIZE)]
-						.chunks_exact(2) //Discard odd samples :p
-						.map(|x| x[0] as f32 / i16::MAX as f32)
-						.collect(),
-				),
+			let new_ffts = crate::precomp_vis::sliding_spectra(
+				&samples
+					[fft_head..fft_head + (delta * (STEP_SIZE) + WINDOW_SIZE) * channels as usize]
+					.chunks_exact(2)
+					.map(|x| x[0] as f32 / i16::MAX as f32)
+					.collect(),
+			);
+			// Compute that many new FFTs and push them into fft_buf
+			fft_buf.push_slice(&new_ffts.data);
+			fft_head += delta * STEP_SIZE * channels as usize; //Advance fft head
+
+			let whatever = SPECTRUM_SIZE * display_width as usize / pixel_scale as usize; //Yeah no better name for this
+
+			fft_buf.peek_slice(&mut read_buf[..whatever]);
+
+			let _ = crate::graphics::gen_spectrogram_into(
+				bytemuck::checked::cast_slice_mut(frame),
+				Slice2D {
+					data: &read_buf[..whatever],
+					width: SPECTRUM_SIZE,
+					height: whatever / SPECTRUM_SIZE,
+				},
 				range,
 			);
-			let spectra = bytemuck::checked::cast_slice(&spectra.data);
-			frame.copy_from_slice(&spectra[spectra.len() - frame.len()..]);
-
+			// If we already have a full screen, dump
+			// that many columns from fft_buf via pop_slice into a mutable slice of a trashcan buffer
+			if fft_buf.occupied_len()
+				> (SPECTRUM_SIZE as u32 * display_width / pixel_scale) as usize
+			{
+				let _ = fft_buf
+					.pop_slice(&mut discard_buf[..delta * SPECTRUM_SIZE * channels as usize]);
+			}
 			if pixels.render().is_err() {
 				window_hook.exit();
 				return;
@@ -265,7 +300,7 @@ fn run_window(
 		} = event
 		{
 			resize_pixels(size, pixel_scale);
-			width = size.width;
+			display_width = size.width;
 		}
 	});
 }

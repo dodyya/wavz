@@ -1,27 +1,36 @@
-use crate::fft::BoxSlice2D;
 use crate::fft::Float;
+use crate::fft::{BoxSlice2D, Slice2D};
 use crate::rgba::*;
 
 // TODO: figure out if theres an easier way
 
 pub fn gen_spectrogram(spectra: BoxSlice2D<Float>, range: f32) -> BoxSlice2D<Rgba> {
-	let width = spectra.height; //TRANSPOSE!
-	let height = spectra.width;
+	let mut img = vec![Rgba::BLACK; spectra.width * spectra.height];
 
-	let mut img = vec![Rgba::BLACK; width * height];
-
-	for x in 0..width {
-		let spectrum = spectra.row(x);
-		for (y, rgba) in render_spectrum_iter(spectrum, range).enumerate() {
-			let start = x + y * width;
-			img[start] = rgba;
-		}
-	}
+	gen_spectrogram_into(&mut img, spectra.unbox(), range);
 
 	BoxSlice2D {
-		width,
-		height,
+		width: spectra.height, //TRANSPOSE
+		height: spectra.width as usize,
 		data: img.into_boxed_slice(),
+	}
+}
+
+pub fn gen_spectrogram_into(out: &mut [Rgba], spectra: Slice2D<Float>, range: f32) {
+	// println!(
+	// 	"Generating spectrogram: w:{}, h:{}",
+	// 	spectra.width, spectra.height,
+	// );
+
+	//We are transposing the spectrogram. Spectra is a "slice of slices", where [   ][   ][   ] they're concatenated like that.
+	// Thus, its height is the number of spectrums, and its width is SPECTRUM_SIZE.
+	let n_spectra = spectra.height;
+	for x in 0..n_spectra {
+		let spectrum = spectra.row(x);
+		for (y, rgba) in render_spectrum_iter(spectrum, range).enumerate() {
+			let start = y * n_spectra + x;
+			out[start] = rgba;
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 use std::sync::LazyLock;
 
 pub const WINDOW_SIZE: usize = 1 << 12; // 4096
+pub const SPECTRUM_SIZE: usize = WINDOW_SIZE / 2;
 pub const STEP_SIZE: usize = 1 << 8; // 256
 
 struct Cplx<T> {
@@ -14,8 +15,31 @@ pub struct BoxSlice2D<T> {
 	pub height: usize,
 }
 
+pub struct Slice2D<'a, T> {
+	pub data: &'a [T],
+	pub width: usize,
+	pub height: usize,
+}
+
+impl<T> Slice2D<'_, T> {
+	pub fn row(&self, row: usize) -> &[T] {
+		&self.data[row * self.width..(row + 1) * self.width]
+	}
+}
+
+impl<T: Clone> From<Slice2D<'_, T>> for BoxSlice2D<T> {
+	fn from(slice: Slice2D<'_, T>) -> Self {
+		BoxSlice2D {
+			data: slice.data.into(),
+			width: slice.width,
+			height: slice.height,
+		}
+	}
+}
+
 impl<T: Default + Copy> BoxSlice2D<T> {
 	pub fn new(width: usize, height: usize) -> Self {
+		// println!("{width}, {height}");
 		BoxSlice2D {
 			data: vec![Default::default(); width * height].into_boxed_slice(),
 			width,
@@ -42,15 +66,23 @@ impl<T: Default + Copy> BoxSlice2D<T> {
 		out
 	}
 
-	pub fn drain_cols(&mut self, count: usize) {
-		self.data = self
-			.data
-			.chunks_exact_mut(self.width)
-			.map(|chunk| chunk[count..].to_owned())
-			.flatten()
-			.collect::<Vec<_>>()
-			.into_boxed_slice();
-		self.width -= count;
+	// pub fn drain_cols(&mut self, count: usize) {
+	// 	self.data = self
+	// 		.data
+	// 		.chunks_exact_mut(self.width)
+	// 		.map(|chunk| chunk[count..].to_owned())
+	// 		.flatten()
+	// 		.collect::<Vec<_>>()
+	// 		.into_boxed_slice();
+	// 	self.width -= count;
+	// }
+	//
+	pub fn unbox(&self) -> Slice2D<'_, T> {
+		Slice2D {
+			data: self.data.as_ref(),
+			width: self.width,
+			height: self.height,
+		}
 	}
 }
 
