@@ -203,8 +203,8 @@ fn run_window(
 			prev_fft_idx = curr_fft_index;
 
 			let new_ffts = crate::precomp_vis::sliding_spectra(
-				&samples
-					[fft_head..fft_head + (delta * (STEP_SIZE) + WINDOW_SIZE) * channels as usize]
+				&samples[fft_head
+					..fft_head + ((delta - 1) * STEP_SIZE + WINDOW_SIZE) * channels as usize]
 					.chunks_exact(2)
 					.map(|x| x[0] as f32 / i16::MAX as f32)
 					.collect(),
