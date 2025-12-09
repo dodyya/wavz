@@ -1,5 +1,6 @@
 use crate::fft::Float;
 use crate::fft::MutSlice2D;
+use crate::fft::SPECTRUM_SIZE;
 use crate::fft::{BoxSlice2D, Slice2D};
 use crate::rgba::*;
 
@@ -11,39 +12,28 @@ pub fn gen_spectrogram(spectra: Slice2D<Float>, range: f32) -> BoxSlice2D<Rgba> 
 	img
 }
 
-pub fn gen_spectrogram_into(spectra: Slice2D<Float>, sens: f32, out: MutSlice2D<Rgba>) {
-	let n_spectra = spectra.data.len() / spectra.width;
+pub fn gen_spectrogram_into(spectra: Slice2D<Float>, sens: f32, mut out: MutSlice2D<Rgba>) {
+	let n_spectra = spectra.data.len() / SPECTRUM_SIZE;
 	let n_rows_visible = out.data.len() / n_spectra;
-	let n_rows_invisible = spectra.width - n_rows_visible; // Yeah this is shitty and tight coupling and this logic needs to go elsewhere.
+	let n_rows_invisible = SPECTRUM_SIZE - n_rows_visible;
 
-	for x in 0..n_spectra {
-		let spectrum = spectra.row(x);
-		for (y, rgba) in render_spectrum_iter(spectrum, sens)
-			.skip(n_rows_invisible)
-			.enumerate()
-		{
-			let start = y * n_spectra + x;
-			out.data[start] = rgba;
+	// Perhaps profile loop order.
+	for y in 0..n_rows_visible {
+		for x in 0..n_spectra {
+			out[(x, y)] = render(spectra[(y + n_rows_invisible, x)], sens);
 		}
 	}
 }
 
 pub fn render_spectrum(spectrum: &[f32], sens: f32) -> Vec<Rgba> {
-	render_spectrum_iter(spectrum, sens).collect()
+	spectrum
+		.iter()
+		.map(move |&value| render(value, sens))
+		.collect()
 }
 
-pub fn render_spectrum_iter(spectrum: &[f32], sens: f32) -> impl Iterator<Item = Rgba> {
-	// const RANGE: f32 = 0.005;
+pub fn render(value: f32, sens: f32) -> Rgba {
 	const CUTOFF: f32 = 0.2; // Visual cutoff for what is black
-	let growth = 1.001f32;
-
-	spectrum.iter().scan(0.2f32, move |factor, &value| {
-		let normed_hue = (*factor * (value) / sens).clamp(0.0, 1.0);
-		*factor = *factor * growth;
-		if normed_hue > CUTOFF {
-			Some(Rgba::hue(normed_hue))
-		} else {
-			Some(Rgba::BLACK)
-		}
-	})
+	let normed_hue = (value / sens).clamp(0.0, 1.0);
+	if normed_hue > CUTOFF { Rgba::hue(normed_hue) } else { Rgba::BLACK }
 }

@@ -1,3 +1,4 @@
+use std::ops::{Index, IndexMut};
 use std::sync::LazyLock;
 
 pub const WINDOW_SIZE: usize = 1 << 12; // 4096
@@ -27,6 +28,28 @@ pub struct MutSlice2D<'a, T> {
 impl<T> Slice2D<'_, T> {
 	pub fn row(&self, row: usize) -> &[T] {
 		&self.data[row * self.width..(row + 1) * self.width]
+	}
+}
+
+impl<T: Copy> Index<(usize, usize)> for Slice2D<'_, T> {
+	type Output = T;
+
+	fn index(&self, (x, y): (usize, usize)) -> &Self::Output {
+		&self.data[y * self.width + x]
+	}
+}
+
+impl<T: Copy> Index<(usize, usize)> for MutSlice2D<'_, T> {
+	type Output = T;
+
+	fn index(&self, (x, y): (usize, usize)) -> &Self::Output {
+		&self.data[y * self.width + x]
+	}
+}
+
+impl<T: Copy> IndexMut<(usize, usize)> for MutSlice2D<'_, T> {
+	fn index_mut(&mut self, (x, y): (usize, usize)) -> &mut Self::Output {
+		&mut self.data[y * self.width + x]
 	}
 }
 
