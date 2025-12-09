@@ -4,7 +4,6 @@ use crate::fft::{BoxSlice2D, Slice2D};
 use crate::rgba::*;
 
 pub fn gen_spectrogram(spectra: Slice2D<Float>, range: f32) -> BoxSlice2D<Rgba> {
-	// let mut img = vec![Rgba::BLACK; spectra.data.len()];
 	let img_height = spectra.width; // TRANSPOSE!!
 	let img_width = spectra.data.len() / img_height;
 	let mut img = BoxSlice2D::<Rgba>::new(img_width, img_height);

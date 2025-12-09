@@ -195,13 +195,10 @@ fn run_window(
 			let curr_fft_index = sample_idx / STEP_SIZE;
 			let delta = curr_fft_index - prev_fft_idx;
 			if delta == 0 {
-				// println!("No visual change since last frame");
 				return;
-			} //else {
-			// 	println!("We need to advance by {delta} new ffts this frame!")
-			// }
-			prev_fft_idx = curr_fft_index;
+			}
 
+			prev_fft_idx = curr_fft_index;
 			let new_ffts = sliding_spectra(
 				&samples[fft_head
 					..fft_head + ((delta - 1) * STEP_SIZE + WINDOW_SIZE) * channels as usize]
@@ -209,19 +206,15 @@ fn run_window(
 					.map(|x| x[0] as f32 / i16::MAX as f32)
 					.collect::<Vec<_>>(),
 			);
-			let _new_ffts_len = (delta - 1) * SPECTRUM_SIZE;
+			// let _new_ffts_len = (delta - 1) * SPECTRUM_SIZE;
 
-			// Compute that many new FFTs and push them into fft_buf
 			fft_buf.push_slice(&new_ffts.data);
-			// fft_buf.vacant_slices_mut().0[..new_ffts_len]]
-			/*fft_buf.*/
 			fft_head += delta * STEP_SIZE * channels as usize; //Advance fft head
 
 			let whatever = SPECTRUM_SIZE * frame_width as usize; //Yeah no better name for this
 
 			fft_buf.peek_slice(&mut read_buf[..whatever]);
-
-			let _ = crate::graphics::gen_spectrogram_into(
+			crate::graphics::gen_spectrogram_into(
 				Slice2D {
 					data: &read_buf[..whatever],
 					width: SPECTRUM_SIZE,

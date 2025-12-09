@@ -1,8 +1,8 @@
 use wavez::demos::*;
 fn main() {
-	mic_vis();
+	// mic_vis();
 	// precomp_vis();
-	// audio_vis();
+	audio_vis();
 	// mic_ascii();
 	// wav_player();
 }
