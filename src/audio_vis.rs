@@ -1,6 +1,3 @@
-use crate::fft::{MutSlice2D, Slice2D, sliding_spectra};
-use crate::fft::{SPECTRUM_SIZE, STEP_SIZE, WINDOW_SIZE};
-use ringbuf::{HeapRb, traits::Consumer as _, traits::Observer as _, traits::Producer as _};
 use std::fs::File;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -11,6 +8,8 @@ use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use cpal::{BufferSize, SampleRate, StreamConfig};
 use memmap2::Mmap;
 use pixels::{Pixels, SurfaceTexture};
+use ringbuf::HeapRb;
+use ringbuf::traits::{Consumer as _, Observer as _, Producer as _};
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
@@ -18,13 +17,14 @@ use winit::keyboard::KeyCode;
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
+use crate::fft::{MutSlice2D, SPECTRUM_SIZE, STEP_SIZE, Slice2D, WINDOW_SIZE, sliding_spectra};
 use crate::parser::{Channels, MmapedRiffPcm, from_mmap};
 
 const WIDTH: usize = 2000;
 const MAX_HEIGHT: u32 = WINDOW_SIZE as u32 / 2;
 
-pub fn audio_vis(file_path: String) {
-	let file_buf: &'static [u8] = mmap_file(Path::new(&file_path));
+pub fn audio_vis(file_path: &str) {
+	let file_buf: &'static [u8] = mmap_file(Path::new(file_path));
 	let MmapedRiffPcm {
 		samples_per_second,
 		channels,
@@ -164,7 +164,7 @@ fn run_window(
 	let mut fft_buf = HeapRb::<f32>::new(PRECOMPUTE * SPECTRUM_SIZE);
 	let mut discard_buf: Box<[f32]> = vec![0.0f32; PRECOMPUTE * SPECTRUM_SIZE].into();
 	let mut read_buf: Box<[f32]> = vec![0.0f32; PRECOMPUTE * SPECTRUM_SIZE].into();
-	let mut prev_fft_idx = 0;
+	let mut prev_fft_idx = usize::MAX; // anything but 0 so that the first frame gets drawn
 	let mut fft_head = 0;
 	let _ = event_loop.run(|event, window_hook| {
 		if let Event::WindowEvent {
@@ -197,8 +197,8 @@ fn run_window(
 			if delta == 0 {
 				return;
 			}
-
 			prev_fft_idx = curr_fft_index;
+
 			let new_ffts = sliding_spectra(
 				&samples[fft_head
 					..fft_head + ((delta - 1) * STEP_SIZE + WINDOW_SIZE) * channels as usize]

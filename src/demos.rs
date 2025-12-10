@@ -13,10 +13,9 @@ use cpal::{BufferSize, SampleRate, StreamConfig};
 use memmap2::Mmap;
 
 use crate::fft::{STEP_SIZE, fft_spectrum};
-use crate::parser::{MmapedRiffPcm, RiffWavePcm, from_mmap};
-
 // pub use crate::audio_vis::audio_vis;
 pub use crate::mic_vis::mic_vis;
+use crate::parser::{MmapedRiffPcm, RiffWavePcm, from_mmap};
 // pub fn mic_vis() {
 // 	crate::mic_vis::mic_vis();
 // }
@@ -31,7 +30,7 @@ pub fn precomp_vis() {
 
 pub fn audio_vis() {
 	let file_path = args().skip(1).next().unwrap();
-	crate::audio_vis::audio_vis(file_path);
+	crate::audio_vis::audio_vis(&file_path);
 }
 
 pub fn mic_ascii() {
@@ -65,26 +64,28 @@ pub fn mic_ascii() {
 	let mut start = 0;
 
 	let stream = match config.sample_format() {
-		cpal::SampleFormat::F32 => device
-			.build_input_stream(
-				&config.into(),
-				move |data: &[f32], _: &_| {
-					buf.extend_from_slice(data);
-					while buf.len() - start > WINDOW_SIZE {
-						ascii_display(&fft_spectrum(
-							&mut (&buf[start..start + WINDOW_SIZE]).to_vec(),
-						));
-						start += STEP_SIZE;
-					}
-					if start > 0 && (start > 4096 || start * 2 > buf.len()) {
-						buf.drain(..start);
-						start = 0;
-					}
-				},
-				err_fn,
-				None,
-			)
-			.unwrap(),
+		cpal::SampleFormat::F32 => {
+			device
+				.build_input_stream(
+					&config.into(),
+					move |data: &[f32], _: &_| {
+						buf.extend_from_slice(data);
+						while buf.len() - start > WINDOW_SIZE {
+							ascii_display(&fft_spectrum(
+								&mut (&buf[start..start + WINDOW_SIZE]).to_vec(),
+							));
+							start += STEP_SIZE;
+						}
+						if start > 0 && (start > 4096 || start * 2 > buf.len()) {
+							buf.drain(..start);
+							start = 0;
+						}
+					},
+					err_fn,
+					None,
+				)
+				.unwrap()
+		},
 		sample_format => {
 			panic!("Unsupported sample format '{sample_format}'")
 		},
