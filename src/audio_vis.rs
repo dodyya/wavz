@@ -193,7 +193,7 @@ fn run_window(
 
 			// Calculate how many pixels just went off screen.
 			let curr_fft_index = sample_idx / STEP_SIZE;
-			let delta = curr_fft_index - prev_fft_idx;
+			let delta = curr_fft_index.wrapping_sub(prev_fft_idx);
 			if delta == 0 {
 				return;
 			}
