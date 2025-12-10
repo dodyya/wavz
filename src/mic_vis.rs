@@ -1,0 +1,173 @@
+use std::sync::Arc;
+use std::thread;
+
+use bytemuck::must_cast_ref;
+use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
+use pixels::{Pixels, SurfaceTexture};
+use ringbuf::HeapRb;
+use ringbuf::traits::{Consumer as _, Observer, Producer as _, Split as _};
+use winit::dpi::PhysicalSize;
+use winit::event::{Event, WindowEvent};
+use winit::event_loop::{EventLoop, EventLoopBuilder};
+use winit::keyboard::KeyCode;
+use winit::window::WindowBuilder;
+use winit_input_helper::WinitInputHelper;
+
+use crate::fft::{SPECTRUM_SIZE, STEP_SIZE, WINDOW_SIZE, fft_spectrum};
+use crate::graphics::render_spectrum;
+use crate::rgba::Rgba;
+
+const PIXEL_SCALE: usize = 2;
+const MAX_WIDTH: usize = 1500; // Maximum screen width, determines playability
+const RGBA: usize = 4;
+
+#[derive(Debug)]
+enum FftEvent {
+	PixelsReady { pix: Arc<[Rgba]> },
+}
+pub fn mic_vis() {
+	let host = cpal::default_host();
+	let device = host.default_input_device().unwrap();
+	let config = device.default_input_config().unwrap();
+	let err_fn = move |err| {
+		eprintln!("an error occurred on stream: {err}");
+	};
+
+	let (mut mic_prod, mut mic_cons) = HeapRb::<f32>::new(WINDOW_SIZE * 2).split();
+
+	// fn extrema<'a>(v: impl Iterator<Item = &'a f32>) -> (f32, f32) {
+	// 	v.fold((f32::MAX, f32::MIN), |(curr_min, curr_max), &x| {
+	// 		(curr_min.min(x), curr_max.max(x))
+	// 	})
+	// }
+
+	let stream = match config.sample_format() {
+		cpal::SampleFormat::F32 => device
+			.build_input_stream(
+				&config.into(),
+				move |data: &[f32], _: &_| {
+					mic_prod.push_slice(data);
+				},
+				err_fn,
+				None,
+			)
+			.unwrap(),
+		sample_format => {
+			panic!("Unsupported sample format '{sample_format}'")
+		},
+	};
+
+	let event_loop = EventLoopBuilder::<FftEvent>::with_user_event()
+		.build()
+		.unwrap();
+
+	let send_proxy = event_loop.create_proxy();
+
+	fn mic_gain(x: f32) -> f32 {
+		x * 40.0f32
+	}
+
+	thread::spawn(move || {
+		let mut incoming = vec![0.0f32; WINDOW_SIZE];
+		let mut discard = vec![0.0f32; STEP_SIZE];
+
+		loop {
+			if mic_cons.occupied_len() < WINDOW_SIZE {
+				continue;
+			}
+
+			let _ = mic_cons.peek_slice(&mut incoming);
+			let _ = send_proxy.send_event(FftEvent::PixelsReady {
+				pix: Arc::from(
+					render_spectrum(
+						&fft_spectrum(
+							&mut (incoming.iter().map(|x| mic_gain(*x))).collect::<Vec<f32>>(),
+						),
+						0.1,
+					)
+					.into_boxed_slice(),
+				),
+			});
+			mic_cons.pop_slice(&mut discard);
+		}
+	});
+
+	let _ = stream.play();
+	run_window(event_loop);
+	drop(stream);
+}
+
+fn run_window(event_loop: EventLoop<FftEvent>) {
+	let mut input = WinitInputHelper::new();
+	let mut height = SPECTRUM_SIZE;
+	let mut width = MAX_WIDTH;
+
+	let window = {
+		let size = PhysicalSize::new((width * PIXEL_SCALE) as u32, (height * PIXEL_SCALE) as u32);
+		WindowBuilder::new()
+			.with_title("")
+			.with_inner_size(size)
+			.with_min_inner_size(PhysicalSize::new(1, 1))
+			.build(&event_loop)
+			.unwrap()
+	};
+
+	let mut pixels = {
+		let window_size = window.inner_size();
+		let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
+		Pixels::new(width as u32, height as u32, surface_texture).unwrap()
+	};
+
+	let _ = event_loop.run(|event, elwt| {
+		if let Event::WindowEvent {
+			event: WindowEvent::RedrawRequested,
+			..
+		} = event
+		{
+			if pixels.render().is_err() {
+				elwt.exit();
+				return;
+			}
+		}
+
+		if let Event::UserEvent(FftEvent::PixelsReady { pix }) = &event {
+			let frame = pixels.frame_mut();
+			for y in 0..height {
+				frame.copy_within(
+					y * width * RGBA + 1 * RGBA..(y + 1) * width * RGBA,
+					y * width * RGBA,
+				);
+			}
+
+			let x = width - 1;
+			for y in 0..height {
+				let source_y = SPECTRUM_SIZE - height + y;
+				frame[(y * width + x) * RGBA..(y * width + x + 1) * RGBA]
+					.copy_from_slice(must_cast_ref::<_, [u8; 4]>(&pix[source_y]))
+			}
+		}
+
+		if input.update(&event) {
+			if input.key_pressed(KeyCode::KeyQ) || input.close_requested() {
+				elwt.exit();
+				return;
+			}
+
+			window.request_redraw();
+		}
+
+		if let Event::WindowEvent {
+			event: WindowEvent::Resized(size),
+			..
+		} = event
+		{
+			let _ = pixels.resize_buffer(
+				size.width / PIXEL_SCALE as u32,
+				size.height / PIXEL_SCALE as u32,
+			);
+			let _ = pixels.resize_surface(size.width, size.height);
+			width = size.width as usize / PIXEL_SCALE;
+			height = size.height as usize / PIXEL_SCALE;
+		}
+	});
+}

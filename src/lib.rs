@@ -1,7 +1,11 @@
+pub mod audio_vis;
+pub mod demos;
 pub mod fft;
 pub mod graphics;
+pub mod mic_vis;
 pub mod parser;
-pub mod player;
+pub mod precomp_vis;
+pub mod rgba;
 
 #[cfg(test)]
 mod tests {
@@ -13,7 +17,7 @@ mod tests {
 	// TODO: rename/remove irrelevant tests
 	// /// Info for debugging
 	fn hz_to_fft_index(hz: f32, samples_per_second: u32) -> usize {
-		(hz * RESOLUTION as f32 / (samples_per_second as f32)).round() as usize
+		(hz * WINDOW_SIZE as f32 / (samples_per_second as f32)).round() as usize
 	}
 
 	#[test]
@@ -38,18 +42,18 @@ mod tests {
 
 	#[test]
 	fn sine_gen() {
-		use crate::fft::{RESOLUTION, SINE};
-		assert!(SINE.len() == RESOLUTION);
+		use crate::fft::{SINE, WINDOW_SIZE};
+		assert!(SINE.len() == WINDOW_SIZE);
 		assert!(SINE[0] < 1e-10);
-		assert!((SINE[RESOLUTION / 4] - 1.0).abs() < 1e-10);
-		assert!(SINE[RESOLUTION / 2] < 1e-10);
-		assert!((SINE[3 * RESOLUTION / 4] + 1.0).abs() < 1e-10);
-		assert!(SINE[RESOLUTION - 1] < 1e-10);
+		assert!((SINE[WINDOW_SIZE / 4] - 1.0).abs() < 1e-10);
+		assert!(SINE[WINDOW_SIZE / 2] < 1e-10);
+		assert!((SINE[3 * WINDOW_SIZE / 4] + 1.0).abs() < 1e-10);
+		assert!(SINE[WINDOW_SIZE - 1] < 1e-10);
 	}
 
 	#[test]
 	fn synthetic_decompose() {
-		let size = RESOLUTION;
+		let size = WINDOW_SIZE;
 		let mut re = Vec::<Float>::with_capacity(size);
 		let mut im = Vec::<Float>::with_capacity(size);
 
@@ -86,7 +90,7 @@ mod tests {
 		let file = File::open("./test_files/800hz.wav").unwrap();
 		let RiffWavePcm { samples, samples_per_second } = RiffWavePcm::parse(file).unwrap();
 		let samples = &*Box::leak(samples);
-		let samples = &samples[..RESOLUTION];
+		let samples = &samples[..WINDOW_SIZE];
 		println!("{}", samples.len());
 		let mut re: Vec<Float> = Vec::with_capacity(samples.len());
 		let mut im: Vec<Float> = Vec::with_capacity(samples.len());
@@ -120,18 +124,14 @@ mod tests {
 		let file = File::open("./test_files/ode.wav").unwrap();
 		let RiffWavePcm { samples, samples_per_second } = RiffWavePcm::parse(file).unwrap();
 		let samples = &*Box::leak(samples);
-		let samples = &samples[..RESOLUTION];
+		let samples = &samples[..WINDOW_SIZE];
 		let mut re: Vec<Float> = Vec::with_capacity(samples.len());
-		let mut im: Vec<Float> = Vec::with_capacity(samples.len());
 
 		for &sample in samples {
 			re.push(sample as Float);
-			im.push(0 as Float);
 		}
 
-		fft_inplace(&mut re, &mut im);
-
-		let amplitude = spectrum(&re, &im);
+		let amplitude = fft_spectrum(&mut re);
 
 		let mut argsort = (0..amplitude.len()).collect::<Vec<usize>>();
 		argsort.sort_by(|&a, &b| amplitude[b].partial_cmp(&amplitude[a]).unwrap()); //Argsort in decreasing order
