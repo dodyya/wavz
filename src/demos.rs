@@ -14,30 +14,25 @@ use memmap2::Mmap;
 
 use crate::fft::{STEP_SIZE, fft_spectrum};
 // pub use crate::audio_vis::audio_vis;
+pub use crate::audio_vis::realtime_vis;
 pub use crate::mic_vis::mic_vis;
 use crate::parser::{MmapedRiffPcm, RiffWavePcm, from_mmap};
 // pub fn mic_vis() {
 // 	crate::mic_vis::mic_vis();
 // }
 
-pub fn precomp_vis() {
-	let file_path = args().skip(1).next().unwrap();
+pub fn precomp_vis(file_path: &str) {
 	let data = File::open(file_path).unwrap();
 	let data = RiffWavePcm::parse(data).unwrap();
 
 	crate::precomp_vis::precomp_vis(data);
 }
 
-pub fn audio_vis() {
-	let file_path = args().skip(1).next().unwrap();
-	crate::audio_vis::audio_vis(&file_path);
-}
-
 pub fn mic_ascii() {
 	use crate::fft::WINDOW_SIZE;
 	fn ascii_display(spectrum: &[f32]) {
 		let mut buf = String::new();
-		for x in spectrum.chunks_exact(14) {
+		for x in spectrum.chunks_exact(14).rev() {
 			let max_amp = x.iter().fold(0.0f32, |acc, &x| acc.max(x));
 			buf.push_str(match max_amp {
 				(..0.0001) => " ",
@@ -64,28 +59,26 @@ pub fn mic_ascii() {
 	let mut start = 0;
 
 	let stream = match config.sample_format() {
-		cpal::SampleFormat::F32 => {
-			device
-				.build_input_stream(
-					&config.into(),
-					move |data: &[f32], _: &_| {
-						buf.extend_from_slice(data);
-						while buf.len() - start > WINDOW_SIZE {
-							ascii_display(&fft_spectrum(
-								&mut (&buf[start..start + WINDOW_SIZE]).to_vec(),
-							));
-							start += STEP_SIZE;
-						}
-						if start > 0 && (start > 4096 || start * 2 > buf.len()) {
-							buf.drain(..start);
-							start = 0;
-						}
-					},
-					err_fn,
-					None,
-				)
-				.unwrap()
-		},
+		cpal::SampleFormat::F32 => device
+			.build_input_stream(
+				&config.into(),
+				move |data: &[f32], _: &_| {
+					buf.extend_from_slice(data);
+					while buf.len() - start > WINDOW_SIZE {
+						ascii_display(&fft_spectrum(
+							&mut (&buf[start..start + WINDOW_SIZE]).to_vec(),
+						));
+						start += STEP_SIZE;
+					}
+					if start > 0 && (start > 4096 || start * 2 > buf.len()) {
+						buf.drain(..start);
+						start = 0;
+					}
+				},
+				err_fn,
+				None,
+			)
+			.unwrap(),
 		sample_format => {
 			panic!("Unsupported sample format '{sample_format}'")
 		},
@@ -96,9 +89,7 @@ pub fn mic_ascii() {
 	drop(stream);
 }
 
-pub fn wav_player() {
-	let path = args().skip(1).next().unwrap();
-
+pub fn wav_player(path: &str) {
 	static MMAP: OnceLock<Mmap> = OnceLock::new();
 	{
 		let fd = File::open(path).unwrap();
@@ -140,15 +131,11 @@ pub fn wav_player() {
 		.find(|dev| dev.name().as_deref() == Ok("pipewire"))
 		.unwrap();
 
-	println!("using audio device named \"{}\"", device.name().unwrap());
-
 	let config = StreamConfig {
 		channels: channels as u16,
 		sample_rate: SampleRate(samples_per_second),
 		buffer_size: BufferSize::Default,
 	};
-
-	dbg!(&config);
 
 	let mut samples_player = samples;
 	let stream = device
@@ -158,7 +145,6 @@ pub fn wav_player() {
 				if let Some((head, tail)) = samples_player.split_at_checked(data.len()) {
 					data.copy_from_slice(head);
 					samples_player = tail;
-					println!("{}", data.len());
 				} else {
 					data[..samples_player.len()].copy_from_slice(samples_player);
 					data[samples_player.len()..].fill(0);

@@ -23,7 +23,7 @@ use crate::parser::{Channels, MmapedRiffPcm, from_mmap};
 const WIDTH: usize = 2000;
 const MAX_HEIGHT: u32 = WINDOW_SIZE as u32 / 2;
 
-pub fn audio_vis(file_path: &str) {
+pub fn realtime_vis(file_path: &str) {
 	let file_buf: &'static [u8] = mmap_file(Path::new(file_path));
 	let MmapedRiffPcm {
 		samples_per_second,
