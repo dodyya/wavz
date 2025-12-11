@@ -12,7 +12,7 @@ cd wavez
 It is recommended to run in release mode for performance.
 
 ```bash
-cargo run --release -- [COMMAND] [OPTIONS]
+cargo run --release -- COMMAND [FILE_PATH]
 ```
 
 Examples:
