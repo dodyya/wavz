@@ -280,22 +280,24 @@ fn run_window(
 				return;
 			}
 
-			if input.key_pressed(KeyCode::Equal) {
-				pixel_scale += 1;
-				resize_pixels(window.inner_size(), pixel_scale);
-			}
-
-			if input.key_pressed(KeyCode::Minus) {
-				if pixel_scale > 1 {
-					pixel_scale -= 1;
+			if input.held_control() {
+				if input.key_pressed(KeyCode::Equal) || input.scroll_diff().1 > 0.0 {
+					pixel_scale += 1;
 					resize_pixels(window.inner_size(), pixel_scale);
+				}
+
+				if input.key_pressed(KeyCode::Minus) || input.scroll_diff().1 < 0.0 {
+					if pixel_scale > 1 {
+						pixel_scale -= 1;
+						resize_pixels(window.inner_size(), pixel_scale);
+					}
 				}
 			}
 
-			if input.key_pressed(KeyCode::ArrowUp) {
+			if input.key_pressed_os(KeyCode::ArrowUp) {
 				sens /= 1.1;
 			}
-			if input.key_pressed(KeyCode::ArrowDown) {
+			if input.key_pressed_os(KeyCode::ArrowDown) {
 				sens *= 1.1;
 			}
 
