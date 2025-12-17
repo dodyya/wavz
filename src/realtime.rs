@@ -60,6 +60,8 @@ fn mmap_file(path: &Path) -> &'static [u8] {
 
 enum Action {
 	PlayPause,
+	Advance,
+	Rewind,
 }
 
 fn spawn_paused_child_audio_thread(
@@ -98,6 +100,12 @@ fn spawn_paused_child_audio_thread(
 					match event {
 						Action::PlayPause => {
 							paused ^= true;
+						},
+						Action::Advance => {
+							player_head += 10000;
+						},
+						Action::Rewind => {
+							player_head -= 10000;
 						},
 					}
 				}
@@ -164,7 +172,7 @@ fn run_window(
 	let mut fft_buf = HeapRb::<f32>::new(PRECOMPUTE * SPECTRUM_SIZE);
 	let mut discard_buf: Box<[f32]> = vec![0.0f32; PRECOMPUTE * SPECTRUM_SIZE].into();
 	let mut read_buf: Box<[f32]> = vec![0.0f32; PRECOMPUTE * SPECTRUM_SIZE].into();
-	let mut prev_fft_idx = usize::MAX; // anything but 0 so that the first frame gets drawn
+	let mut prev_fft_idx = usize::MAX;
 	let mut fft_head = 0;
 	let _ = event_loop.run(|event, window_hook| {
 		if let Event::WindowEvent {
@@ -206,17 +214,16 @@ fn run_window(
 					.map(|x| x[0] as f32 / i16::MAX as f32)
 					.collect::<Vec<_>>(),
 			);
-			// let _new_ffts_len = (delta - 1) * SPECTRUM_SIZE;
 
 			fft_buf.push_slice(&new_ffts.data);
 			fft_head += delta * STEP_SIZE * channels as usize; //Advance fft head
 
-			let whatever = SPECTRUM_SIZE * frame_width as usize; //Yeah no better name for this
+			let demand = SPECTRUM_SIZE * frame_width as usize;
 
-			fft_buf.peek_slice(&mut read_buf[..whatever]);
+			fft_buf.peek_slice(&mut read_buf[..demand]);
 			crate::graphics::gen_spectrogram_into(
 				Slice2D {
-					data: &read_buf[..whatever],
+					data: &read_buf[..demand],
 					width: SPECTRUM_SIZE,
 				},
 				sens,
@@ -278,6 +285,15 @@ fn run_window(
 				}
 
 				return;
+			}
+
+			if input.key_pressed(KeyCode::ArrowRight) {
+				tx.send(Action::Advance).unwrap();
+				play_time_from_start += Duration::from_millis(500);
+			}
+			if input.key_pressed(KeyCode::ArrowLeft) {
+				tx.send(Action::Rewind).unwrap();
+				play_time_from_start -= Duration::from_millis(500);
 			}
 
 			if input.held_control() {

@@ -1,10 +1,10 @@
-pub mod audio_vis;
 pub mod demos;
 pub mod fft;
 pub mod graphics;
-pub mod mic_vis;
+pub mod mic;
 pub mod parser;
-pub mod precomp_vis;
+pub mod precomp;
+pub mod realtime;
 pub mod rgba;
 
 #[cfg(test)]

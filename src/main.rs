@@ -10,10 +10,10 @@ fn main() {
 		("mic", _) => mic_vis(),
 		("asciimic", _) => mic_ascii(),
 		("precomp", Some(file_path)) => precomp_vis(&file_path),
-		("visualize", Some(file_path)) => realtime_vis(&file_path),
+		("vis", Some(file_path)) => realtime_vis(&file_path),
 		("play", Some(file_path)) => wav_player(&file_path),
 		_ => println!(
-			"Supported commands are: asciimic, mic, visualize, precomp, play. The last 3 require a file path."
+			"Supported commands are: asciimic, mic, vis, precomp, play. The last 3 require a file path."
 		),
 	};
 }

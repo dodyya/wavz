@@ -39,7 +39,7 @@ pub fn precomp_vis(RiffWavePcm { samples, samples_per_second }: RiffWavePcm) {
 		.unbox(),
 		0.005,
 	);
-	crate::precomp_vis::run_window(spectra, samples_per_second / STEP_SIZE as u32);
+	crate::precomp::run_window(spectra, samples_per_second / STEP_SIZE as u32);
 }
 struct PlayState {
 	pub x_offset: usize,

@@ -1,4 +1,3 @@
-use std::env::args;
 use std::fs::File;
 #[cfg(unix)]
 use std::os::fd::IntoRawFd;
@@ -13,19 +12,15 @@ use cpal::{BufferSize, SampleRate, StreamConfig};
 use memmap2::Mmap;
 
 use crate::fft::{STEP_SIZE, fft_spectrum};
-// pub use crate::audio_vis::audio_vis;
-pub use crate::audio_vis::realtime_vis;
-pub use crate::mic_vis::mic_vis;
+pub use crate::mic::mic_vis;
 use crate::parser::{MmapedRiffPcm, RiffWavePcm, from_mmap};
-// pub fn mic_vis() {
-// 	crate::mic_vis::mic_vis();
-// }
+pub use crate::realtime::realtime_vis;
 
 pub fn precomp_vis(file_path: &str) {
 	let data = File::open(file_path).unwrap();
 	let data = RiffWavePcm::parse(data).unwrap();
 
-	crate::precomp_vis::precomp_vis(data);
+	crate::precomp::precomp_vis(data);
 }
 
 pub fn mic_ascii() {
