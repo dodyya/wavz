@@ -121,7 +121,7 @@ struct FftMaker {
 impl FftMaker {
 	fn new(c: Channels) -> Self {
 		Self {
-			fft_buf: VecDeque::<f32>::with_capacity(PRECOMPUTE * SPECTRUM_SIZE),
+			fft_buf: VecDeque::with_capacity(PRECOMPUTE * SPECTRUM_SIZE),
 			first_visible_idx: 0,
 			right_bound: 0,
 			left_bound: 0,
@@ -130,23 +130,36 @@ impl FftMaker {
 	}
 
 	fn yield_ffts(&self, out: &mut [f32]) {
+		// dbg!(self.left_bound, self.right_bound);
 		let (head, tail) = self.fft_buf.as_slices();
+		let real_len = out
+			.len()
+			.min(head.len() + tail.len() - self.first_visible_idx);
+		if head.len() + tail.len() < real_len {
+			// dbg!(head.len(), tail.len(), out.len());
+			println!("Not 'nuff stuff!");
+			return;
+		}
+		let meaningful_out = &mut out[..real_len];
 
 		// Need [first_visible_idx..first_visible_idx+out.len()] split across two slices
 		// Case 1: everything fits in the first slice
-		let outlen = out.len();
-		if self.first_visible_idx + outlen <= head.len() {
-			out.copy_from_slice(&head[self.first_visible_idx..self.first_visible_idx + outlen]);
+		if self.first_visible_idx + real_len <= head.len() {
+			// println!("Case 1");
+			meaningful_out
+				.copy_from_slice(&head[self.first_visible_idx..self.first_visible_idx + real_len]);
 		// Case 2: split occurs in the first slice
 		} else if self.first_visible_idx < head.len() {
+			// println!("Case 2");
 			let front = &head[self.first_visible_idx..];
-			out[..front.len()].copy_from_slice(front);
-			out[front.len()..].copy_from_slice(&tail[..outlen - front.len()]);
+			meaningful_out[..front.len()].copy_from_slice(front);
+			meaningful_out[front.len()..].copy_from_slice(&tail[..real_len - front.len()]);
 		// Case 3: only in the second slice
 		} else {
-			out.copy_from_slice(
+			// println!("Case 3");
+			meaningful_out.copy_from_slice(
 				&tail[self.first_visible_idx - head.len()
-					..self.first_visible_idx + outlen - head.len()],
+					..self.first_visible_idx + real_len - head.len()],
 			);
 		}
 	}
@@ -182,7 +195,7 @@ impl FftMaker {
 	}
 
 	pub fn drop_back(&mut self, delta: usize) {
-		self.fft_buf.drain(..delta);
+		self.fft_buf.drain(..delta * SPECTRUM_SIZE);
 		self.left_bound += delta * STEP_SIZE * self.channels;
 	}
 }
@@ -278,7 +291,7 @@ fn run_window(
 
 	let mut read_buf: Box<[f32]> = vec![0.0f32; PRECOMPUTE * SPECTRUM_SIZE].into();
 	let mut prev_fft_idx = 0usize.wrapping_sub(1); //-1 :)
-	let mut proc: FftMaker = FftMaker::new(channels);
+	let mut maker: FftMaker = FftMaker::new(channels);
 	let mut song: SongState = SongState::new(Duration::from_secs(
 		samples.len() as u64 / channels as u64 / samples_per_second as u64,
 	));
@@ -301,14 +314,16 @@ fn run_window(
 			}
 
 			prev_fft_idx = curr_fft_index;
-			proc.process_forward(&samples, delta);
+			maker.process_forward(&samples, delta);
 			let demand = SPECTRUM_SIZE * frame_width as usize;
-			proc.yield_ffts(&mut read_buf[..demand]);
+			maker.yield_ffts(&mut read_buf[..demand]);
+
+			// maker.first_visible_idx += delta;
 
 			let num_samples_represented = STEP_SIZE * frame_width as usize;
-
-			if sample_idx > proc.left_bound + num_samples_represented {
-				proc.drop_back(sample_idx - proc.left_bound - num_samples_represented);
+			if sample_idx > maker.left_bound + num_samples_represented {
+				maker.first_visible_idx += (delta - 2) * SPECTRUM_SIZE;
+				maker.drop_back(delta);
 			}
 
 			gen_spectrogram_into(
