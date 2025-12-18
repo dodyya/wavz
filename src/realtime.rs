@@ -111,13 +111,13 @@ fn spawn_audio(
 }
 
 const PRECOMPUTE: usize = 10000; //Maximum number of FFTs we expect to ever have to precompute
-struct FftProcessor {
+struct FftMaker {
 	fft_buf: HeapRb<f32>,
 	discard_buf: Box<[f32]>,
 	fft_head: usize,
 }
 
-impl FftProcessor {
+impl FftMaker {
 	pub fn new() -> Self {
 		let fft_buf = HeapRb::<f32>::new(PRECOMPUTE * SPECTRUM_SIZE);
 		let discard_buf = vec![0.0; PRECOMPUTE * SPECTRUM_SIZE].into_boxed_slice();
@@ -152,16 +152,16 @@ impl FftProcessor {
 	}
 }
 
-struct Playback {
-	timestamp: Duration,
+struct SongState {
+	time_to_play: Duration,
 	last_play: Option<Instant>,
 	song_length: Duration,
 }
 
-impl Playback {
+impl SongState {
 	fn new(song_length: Duration) -> Self {
 		Self {
-			timestamp: Duration::ZERO,
+			time_to_play: Duration::ZERO,
 			last_play: None,
 			song_length,
 		}
@@ -174,12 +174,12 @@ impl Playback {
 	fn check_end(&mut self) {
 		if self.dur() >= self.song_length {
 			self.last_play = None;
-			self.timestamp = self.song_length;
+			self.time_to_play = self.song_length;
 		}
 	}
 
 	fn dur(&self) -> Duration {
-		self.timestamp + self.last_play.map_or(Duration::ZERO, |t| t.elapsed())
+		self.time_to_play + self.last_play.map_or(Duration::ZERO, |t| t.elapsed())
 	}
 
 	fn handle(&mut self, act: Action) {
@@ -187,7 +187,7 @@ impl Playback {
 			Action::PlayPause => {
 				if let Some(inst) = self.last_play {
 					self.last_play = None;
-					self.timestamp += inst.elapsed();
+					self.time_to_play += inst.elapsed();
 				} else {
 					self.last_play = Some(Instant::now());
 				}
@@ -213,7 +213,7 @@ fn run_window(
 	let window = {
 		let size = PhysicalSize::new(display_width, WINDOW_SIZE as u32 / 2);
 		WindowBuilder::new()
-			.with_title("wavez")
+			.with_title("")
 			.with_inner_size(size)
 			.with_resizable(true)
 			.build(&event_loop)
@@ -231,8 +231,8 @@ fn run_window(
 
 	let mut read_buf: Box<[f32]> = vec![0.0f32; PRECOMPUTE * SPECTRUM_SIZE].into();
 	let mut prev_fft_idx = 0usize.wrapping_sub(1); //-1 :)
-	let mut processor: FftProcessor = FftProcessor::new();
-	let mut playback: Playback = Playback::new(Duration::from_secs(
+	let mut proc: FftMaker = FftMaker::new();
+	let mut song: SongState = SongState::new(Duration::from_secs(
 		samples.len() as u64 / channels as u64 / samples_per_second as u64,
 	));
 	let _ = event_loop.run(|event, window_hook| {
@@ -243,8 +243,8 @@ fn run_window(
 		{
 			let frame = pixels.frame_mut();
 			let frame_width = display_width / pixel_scale;
-			let sample_idx = playback.sample_idx(samples_per_second as usize);
-			playback.check_end();
+			let sample_idx = song.sample_idx(samples_per_second as usize);
+			song.check_end();
 
 			// Calculate how many pixels just went off screen.
 			let curr_fft_index = sample_idx / STEP_SIZE;
@@ -254,9 +254,10 @@ fn run_window(
 			}
 
 			prev_fft_idx = curr_fft_index;
-			processor.process_chunk(&samples, delta, channels as usize);
+			proc.process_chunk(&samples, delta, channels as usize);
 			let demand = SPECTRUM_SIZE * frame_width as usize;
-			processor.yield_ffts(&mut read_buf[..demand]);
+			proc.yield_ffts(&mut read_buf[..demand]);
+			proc.drain_except(frame_width as usize);
 
 			crate::graphics::gen_spectrogram_into(
 				Slice2D {
@@ -269,8 +270,6 @@ fn run_window(
 					width: frame_width as usize,
 				},
 			);
-
-			processor.drain_except(frame_width as usize);
 
 			if pixels.render().is_err() {
 				window_hook.exit();
@@ -298,16 +297,16 @@ fn run_window(
 
 			if input.key_pressed(KeyCode::Space) {
 				tx.send(Action::PlayPause).unwrap();
-				playback.handle(Action::PlayPause);
+				song.handle(Action::PlayPause);
 			}
 
 			if input.key_pressed(KeyCode::ArrowRight) {
 				tx.send(Action::Advance).unwrap();
-				playback.handle(Action::Advance);
+				song.handle(Action::Advance);
 			}
 			if input.key_pressed(KeyCode::ArrowLeft) {
 				tx.send(Action::Rewind).unwrap();
-				playback.handle(Action::Rewind);
+				song.handle(Action::Rewind);
 			}
 
 			if input.key_pressed_os(KeyCode::Equal) || input.scroll_diff().1 > 0.0 {
