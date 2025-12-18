@@ -1,10 +1,17 @@
 use core::error::Error;
 use core::fmt;
-use std::io::{self, SeekFrom};
+use std::{
+	fs::File,
+	io::{self, SeekFrom},
+	path::Path,
+	sync::OnceLock,
+};
+pub type Samples = &'static [i16];
 
 use bytemuck::{
 	AnyBitPattern, Pod, Zeroable, cast_slice, must_cast_mut, must_cast_slice_mut, zeroed_slice_box,
 };
+use memmap2::Mmap;
 
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 #[repr(C)]
@@ -346,6 +353,27 @@ struct Format40 {
 	speaker_position_mask: [u8; 4],
 	data_format: u16,
 	extention_tag: [u8; 14],
+}
+
+pub fn mmap_file(path: &str) -> &'static [u8] {
+	static MMAP: OnceLock<Mmap> = OnceLock::new();
+	{
+		let file = File::open(path).unwrap();
+
+		// the lifetime of the mmap is not tied to the lifetime of the file descriptor it was
+		// created from, so Mmap: 'static
+		//
+		// SAFETY: this is unsound; we have no reason to think that the file won't be removed
+		// while we read it. But we can't do anything about this; libc flock(2) is not strong enough
+		// to prevent this, and it's also not cross-platform. So we don't have much of a choice.
+		// The memmap2 crate docs guarantee that if we violate this assumption, we will get a
+		// SIGBUS (and thus the program will terminate), which means this doesn't violate the
+		// "real" memory safety of this program.
+		MMAP.set(unsafe { Mmap::map(&file) }.unwrap())
+			.expect("the oncelock cannot be initialized yet");
+	}
+	// 'static :)
+	&*(*MMAP.get().expect("the oncelock was just initialized"))
 }
 
 /// panics if not enough data or if unaligned (should not happen if the slice

@@ -210,25 +210,3 @@ pub fn sliding_spectra_into(samples: &[f32], mut out: MutSlice2D<f32>) {
 		start += STEP_SIZE;
 	}
 }
-
-// pub fn sliding_spectra_iter(samples: &[f32]) -> impl Iterator<Item = f32> {
-// 	let num_ffts = (samples.len() - WINDOW_SIZE) / STEP_SIZE;
-// 	let mut out = BoxSlice2D::<f32>::new(SPECTRUM_SIZE, num_ffts);
-// 	let mut start = 0;
-// 	let mut fr = Box::new([0.0; WINDOW_SIZE]);
-
-// 	std::iter::from_fn(move || {
-// 		if start + WINDOW_SIZE > samples.len() {
-// 			None
-// 		} else {
-// 			for j in 0..WINDOW_SIZE {
-// 				fr[j] = samples[j + start];
-// 			}
-
-// 			fft_spectrum_into(fr.as_mut(), out.row_mut(0));
-// 			start += STEP_SIZE;
-
-// 			Some(out.clone())
-// 		}
-// 	})
-// }
