@@ -2,8 +2,8 @@ use bytemuck::checked::cast_slice_mut;
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use cpal::{BufferSize, SampleRate, StreamConfig};
 use pixels::{Pixels, SurfaceTexture};
-use ringbuf::HeapRb;
-use ringbuf::traits::{Consumer as _, Observer as _, Producer as _};
+// use ringbuf::HeapRb;
+use std::collections::VecDeque;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
 use winit::dpi::PhysicalSize;
@@ -15,7 +15,7 @@ use winit_input_helper::WinitInputHelper;
 
 use crate::fft::{MutSlice2D, SPECTRUM_SIZE, STEP_SIZE, Slice2D, WINDOW_SIZE, sliding_spectra};
 use crate::graphics::gen_spectrogram_into;
-use crate::parser::{MmapedRiffPcm, Samples, from_mmap, mmap_file};
+use crate::parser::{Channels, MmapedRiffPcm, Samples, from_mmap, mmap_file};
 
 const WIDTH: usize = 2000;
 const MAX_HEIGHT: u32 = WINDOW_SIZE as u32 / 2;
@@ -111,47 +111,79 @@ fn spawn_audio(
 
 const PRECOMPUTE: usize = 10000; //Maximum number of FFTs we expect to ever have to precompute
 struct FftMaker {
-	fft_buf: HeapRb<f32>,
-	discard_buf: Box<[f32]>,
-	fft_head: usize,
+	fft_buf: VecDeque<f32>,
+	first_visible_idx: usize, // Index into fft_buf, representing the first spectrum visible currently.
+	left_bound: usize, // Index into samples, representing the start of the first fft in the fft_buf
+	right_bound: usize, // Index into samples, representing the start of the first fft right of the fft_buf
+	channels: usize,
 }
 
 impl FftMaker {
-	pub fn new() -> Self {
-		let fft_buf = HeapRb::<f32>::new(PRECOMPUTE * SPECTRUM_SIZE);
-		let discard_buf = vec![0.0; PRECOMPUTE * SPECTRUM_SIZE].into_boxed_slice();
-		let fft_head = 0;
-
-		Self { fft_buf, discard_buf, fft_head }
+	fn new(c: Channels) -> Self {
+		Self {
+			fft_buf: VecDeque::<f32>::with_capacity(PRECOMPUTE * SPECTRUM_SIZE),
+			first_visible_idx: 0,
+			right_bound: 0,
+			left_bound: 0,
+			channels: c as usize,
+		}
 	}
 
-	pub fn yield_ffts(&self, out: &mut [f32]) {
-		self.fft_buf.peek_slice(out);
-	}
+	fn yield_ffts(&self, out: &mut [f32]) {
+		let (head, tail) = self.fft_buf.as_slices();
 
-	pub fn process_chunk(&mut self, samples: Samples, delta: usize, channels: usize) {
-		let new_ffts = sliding_spectra(
-			&samples[self.fft_head
-				..self.fft_head + ((delta - 1) * STEP_SIZE + WINDOW_SIZE) * channels as usize]
-				.chunks_exact(channels as usize)
-				.map(|x| x[0] as f32 / i16::MAX as f32)
-				.collect::<Vec<_>>(),
-		);
-
-		self.fft_buf.push_slice(&new_ffts.data);
-		self.fft_head += delta * STEP_SIZE * channels as usize;
-	}
-
-	pub fn drain_except(&mut self, keep_cols: usize) {
-		if self.fft_buf.occupied_len() > SPECTRUM_SIZE * keep_cols {
-			let _ = self.fft_buf.pop_slice(
-				&mut self.discard_buf[..self.fft_buf.occupied_len() - SPECTRUM_SIZE * keep_cols],
+		// Need [first_visible_idx..first_visible_idx+out.len()] split across two slices
+		// Case 1: everything fits in the first slice
+		let outlen = out.len();
+		if self.first_visible_idx + outlen <= head.len() {
+			out.copy_from_slice(&head[self.first_visible_idx..self.first_visible_idx + outlen]);
+		// Case 2: split occurs in the first slice
+		} else if self.first_visible_idx < head.len() {
+			let front = &head[self.first_visible_idx..];
+			out[..front.len()].copy_from_slice(front);
+			out[front.len()..].copy_from_slice(&tail[..outlen - front.len()]);
+		// Case 3: only in the second slice
+		} else {
+			out.copy_from_slice(
+				&tail[self.first_visible_idx - head.len()
+					..self.first_visible_idx + outlen - head.len()],
 			);
 		}
 	}
 
-	pub fn rewind_fft_head(&mut self, n: usize) {
-		self.fft_head = self.fft_head.checked_sub(n).unwrap_or(0);
+	/// Add delta ffts to the front
+	pub fn process_forward(&mut self, samples: Samples, delta: usize) {
+		let new_ffts = sliding_spectra(
+			&samples[self.right_bound
+				..self.right_bound + ((delta - 1) * STEP_SIZE + WINDOW_SIZE) * self.channels]
+				.chunks_exact(self.channels)
+				.map(|x| x[0] as f32 / i16::MAX as f32)
+				.collect::<Vec<_>>(),
+		);
+
+		self.fft_buf.extend(new_ffts.data);
+		self.right_bound += delta * STEP_SIZE * self.channels;
+	}
+
+	/// Add delta ffts to the back
+	pub fn process_back(&mut self, samples: Samples, delta: usize) {
+		let new_ffts = sliding_spectra(
+			&samples[self.left_bound - ((delta - 1) * STEP_SIZE + WINDOW_SIZE) * self.channels
+				..self.left_bound]
+				.chunks_exact(self.channels)
+				.map(|x| x[0] as f32 / i16::MAX as f32)
+				.collect::<Vec<_>>(),
+		);
+
+		for &datum in new_ffts.data.iter().rev() {
+			self.fft_buf.push_front(datum);
+		}
+		self.left_bound -= delta * STEP_SIZE * self.channels;
+	}
+
+	pub fn drop_back(&mut self, delta: usize) {
+		self.fft_buf.drain(..delta);
+		self.left_bound += delta * STEP_SIZE * self.channels;
 	}
 }
 
@@ -246,7 +278,7 @@ fn run_window(
 
 	let mut read_buf: Box<[f32]> = vec![0.0f32; PRECOMPUTE * SPECTRUM_SIZE].into();
 	let mut prev_fft_idx = 0usize.wrapping_sub(1); //-1 :)
-	let mut proc: FftMaker = FftMaker::new();
+	let mut proc: FftMaker = FftMaker::new(channels);
 	let mut song: SongState = SongState::new(Duration::from_secs(
 		samples.len() as u64 / channels as u64 / samples_per_second as u64,
 	));
@@ -269,10 +301,15 @@ fn run_window(
 			}
 
 			prev_fft_idx = curr_fft_index;
-			proc.process_chunk(&samples, delta, channels as usize);
+			proc.process_forward(&samples, delta);
 			let demand = SPECTRUM_SIZE * frame_width as usize;
 			proc.yield_ffts(&mut read_buf[..demand]);
-			proc.drain_except(frame_width as usize);
+
+			let num_samples_represented = STEP_SIZE * frame_width as usize;
+
+			if sample_idx > proc.left_bound + num_samples_represented {
+				proc.drop_back(sample_idx - proc.left_bound - num_samples_represented);
+			}
 
 			gen_spectrogram_into(
 				Slice2D {
