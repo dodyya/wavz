@@ -14,6 +14,7 @@ use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 use crate::fft::{MutSlice2D, SPECTRUM_SIZE, STEP_SIZE, Slice2D, WINDOW_SIZE, sliding_spectra};
+use crate::graphics::gen_spectrogram_into;
 use crate::parser::{MmapedRiffPcm, Samples, from_mmap, mmap_file};
 
 const WIDTH: usize = 2000;
@@ -76,7 +77,9 @@ fn spawn_audio(
 							player_head += channels as usize * (samples_per_second / 2) as usize;
 						},
 						Action::Rewind => {
-							player_head -= channels as usize * (samples_per_second / 2) as usize;
+							player_head = player_head
+								.checked_sub(channels as usize * (samples_per_second / 2) as usize)
+								.unwrap_or(0);
 						},
 					}
 				}
@@ -146,19 +149,23 @@ impl FftMaker {
 			);
 		}
 	}
+
+	pub fn rewind_fft_head(&mut self, n: usize) {
+		self.fft_head = self.fft_head.checked_sub(n).unwrap_or(0);
+	}
 }
 
 struct SongState {
-	time_to_play: Duration,
-	last_play: Option<Instant>,
+	start_timestamp: Duration,
+	started_playing: Option<Instant>,
 	song_length: Duration,
 }
 
 impl SongState {
 	fn new(song_length: Duration) -> Self {
 		Self {
-			time_to_play: Duration::ZERO,
-			last_play: None,
+			start_timestamp: Duration::ZERO,
+			started_playing: None,
 			song_length,
 		}
 	}
@@ -169,27 +176,39 @@ impl SongState {
 
 	fn check_end(&mut self) {
 		if self.dur() >= self.song_length {
-			self.last_play = None;
-			self.time_to_play = self.song_length;
+			self.started_playing = None;
+			self.start_timestamp = self.song_length;
 		}
 	}
 
 	fn dur(&self) -> Duration {
-		self.time_to_play + self.last_play.map_or(Duration::ZERO, |t| t.elapsed())
+		self.start_timestamp + self.started_playing.map_or(Duration::ZERO, |t| t.elapsed())
 	}
 
 	fn handle(&mut self, act: Action) {
 		match act {
 			Action::PlayPause => {
-				if let Some(inst) = self.last_play {
-					self.last_play = None;
-					self.time_to_play += inst.elapsed();
+				if let Some(inst) = self.started_playing {
+					self.started_playing = None;
+					self.start_timestamp += inst.elapsed();
 				} else {
-					self.last_play = Some(Instant::now());
+					self.started_playing = Some(Instant::now());
 				}
 			},
-			Action::Advance => self.time_to_play += Duration::from_secs_f32(0.5),
-			Action::Rewind => todo!(),
+			Action::Advance => {
+				self.start_timestamp += Duration::from_secs_f32(0.5);
+				self.check_end()
+			},
+			Action::Rewind => {
+				if let Some(inst) = self.started_playing {
+					self.started_playing = None;
+					self.start_timestamp += inst.elapsed();
+				}
+				self.start_timestamp = self
+					.start_timestamp
+					.checked_sub(Duration::from_secs_f32(0.5))
+					.unwrap_or_default();
+			},
 		}
 	}
 }
@@ -255,7 +274,7 @@ fn run_window(
 			proc.yield_ffts(&mut read_buf[..demand]);
 			proc.drain_except(frame_width as usize);
 
-			crate::graphics::gen_spectrogram_into(
+			gen_spectrogram_into(
 				Slice2D {
 					data: &read_buf[..demand],
 					width: SPECTRUM_SIZE,
