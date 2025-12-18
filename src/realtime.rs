@@ -1,13 +1,9 @@
 use bytemuck::checked::cast_slice_mut;
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use cpal::{BufferSize, SampleRate, StreamConfig};
-use memmap2::Mmap;
 use pixels::{Pixels, SurfaceTexture};
 use ringbuf::HeapRb;
 use ringbuf::traits::{Consumer as _, Observer as _, Producer as _};
-use std::fs::File;
-use std::path::Path;
-use std::sync::OnceLock;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
 use winit::dpi::PhysicalSize;
@@ -18,7 +14,7 @@ use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 use crate::fft::{MutSlice2D, SPECTRUM_SIZE, STEP_SIZE, Slice2D, WINDOW_SIZE, sliding_spectra};
-use crate::parser::{Channels, MmapedRiffPcm, Samples, from_mmap, mmap_file};
+use crate::parser::{MmapedRiffPcm, Samples, from_mmap, mmap_file};
 
 const WIDTH: usize = 2000;
 const MAX_HEIGHT: u32 = WINDOW_SIZE as u32 / 2;
@@ -77,10 +73,10 @@ fn spawn_audio(
 							paused ^= true;
 						},
 						Action::Advance => {
-							player_head += 10000;
+							player_head += channels as usize * (samples_per_second / 2) as usize;
 						},
 						Action::Rewind => {
-							player_head -= 10000;
+							player_head -= channels as usize * (samples_per_second / 2) as usize;
 						},
 					}
 				}
@@ -192,7 +188,7 @@ impl SongState {
 					self.last_play = Some(Instant::now());
 				}
 			},
-			Action::Advance => todo!(),
+			Action::Advance => self.time_to_play += Duration::from_secs_f32(0.5),
 			Action::Rewind => todo!(),
 		}
 	}
