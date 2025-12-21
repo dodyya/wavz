@@ -189,6 +189,10 @@ pub fn fft_inplace(fr: &mut [Float], fi: &mut [Float]) {
 }
 
 pub fn sliding_spectra(samples: &[f32]) -> BoxSlice2D<f32> {
+	if samples.len() < WINDOW_SIZE {
+		return BoxSlice2D::new(SPECTRUM_SIZE, 0);
+	}
+
 	let num_ffts = (samples.len() - WINDOW_SIZE) / STEP_SIZE;
 	let mut out = BoxSlice2D::<f32>::new(SPECTRUM_SIZE, num_ffts);
 	sliding_spectra_into(samples, out.unbox_mut());

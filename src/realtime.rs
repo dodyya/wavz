@@ -112,101 +112,125 @@ fn spawn_audio(
 const PRECOMPUTE: usize = 10000; //Maximum number of FFTs we expect to ever have to precompute
 struct FftMaker {
 	fft_buf: VecDeque<f32>,
-	first_visible_idx: usize, // Index into fft_buf, representing the first spectrum visible currently.
-	left_bound: usize, // Index into samples, representing the start of the first fft in the fft_buf
-	right_bound: usize, // Index into samples, representing the start of the first fft right of the fft_buf
+	rbound: usize, // Index into samples, representing the start of the first fft right of the fft_buf
+	lbound: usize, // Index into samples, representing the start of the first fft in the fft_buf
 	channels: usize,
+	samples: Samples,
+}
+
+fn floor_step(x: usize) -> usize {
+	x & !(STEP_SIZE - 1)
+}
+
+fn ceil_step(x: usize) -> usize {
+	(x + STEP_SIZE - 1) & !(STEP_SIZE - 1)
 }
 
 impl FftMaker {
-	fn new(c: Channels) -> Self {
+	fn new(c: Channels, samples: Samples) -> Self {
 		Self {
 			fft_buf: VecDeque::with_capacity(PRECOMPUTE * SPECTRUM_SIZE),
-			first_visible_idx: 0,
-			right_bound: 0,
-			left_bound: 0,
+			lbound: 0,
+			rbound: 0,
 			channels: c as usize,
+			samples,
 		}
 	}
 
-	fn yield_ffts(&self, out: &mut [f32]) {
-		// dbg!(self.left_bound, self.right_bound);
+	fn render(&mut self, start_frame: usize, out: &mut [f32]) {
+		// number of columns == out.len()/SPECTRUM_SIZE
+		let start_frame = floor_step(start_frame);
+		let end_frame = start_frame + (out.len() / SPECTRUM_SIZE) * STEP_SIZE;
+
+		self.extend_front(end_frame + 3 * WINDOW_SIZE);
+		self.extend_back(start_frame.checked_sub(WINDOW_SIZE).unwrap_or(0));
+
 		let (head, tail) = self.fft_buf.as_slices();
-		let real_len = out
-			.len()
-			.min(head.len() + tail.len() - self.first_visible_idx);
-		if head.len() + tail.len() < real_len {
-			// dbg!(head.len(), tail.len(), out.len());
-			println!("Not 'nuff stuff!");
+
+		let fft_start = ((start_frame - self.lbound) / STEP_SIZE) * SPECTRUM_SIZE;
+		let fft_end = ((end_frame - self.lbound) / STEP_SIZE) * SPECTRUM_SIZE;
+
+		let truelen = fft_end - fft_start;
+		assert!(self.fft_buf.len() >= fft_end);
+		assert!(out.len() == truelen);
+
+		if fft_end <= head.len() {
+			out.copy_from_slice(&head[fft_start..fft_end]);
+		} else if fft_start < head.len() {
+			let front = &head[fft_start..];
+			out[..front.len()].copy_from_slice(front);
+			out[front.len()..].copy_from_slice(&tail[..truelen - front.len()]);
+		} else {
+			out.copy_from_slice(&tail[fft_start - head.len()..fft_end - head.len()]);
+		}
+
+		self.drop_back(start_frame.checked_sub(WINDOW_SIZE).unwrap_or(0));
+	}
+
+	pub fn extend_front(&mut self, right_frame: usize) {
+		let true_right = ceil_step(right_frame);
+		if true_right <= self.rbound {
 			return;
 		}
-		let meaningful_out = &mut out[..real_len];
 
-		// Need [first_visible_idx..first_visible_idx+out.len()] split across two slices
-		// Case 1: everything fits in the first slice
-		if self.first_visible_idx + real_len <= head.len() {
-			// println!("Case 1");
-			meaningful_out
-				.copy_from_slice(&head[self.first_visible_idx..self.first_visible_idx + real_len]);
-		// Case 2: split occurs in the first slice
-		} else if self.first_visible_idx < head.len() {
-			// println!("Case 2");
-			let front = &head[self.first_visible_idx..];
-			meaningful_out[..front.len()].copy_from_slice(front);
-			meaningful_out[front.len()..].copy_from_slice(&tail[..real_len - front.len()]);
-		// Case 3: only in the second slice
-		} else {
-			// println!("Case 3");
-			meaningful_out.copy_from_slice(
-				&tail[self.first_visible_idx - head.len()
-					..self.first_visible_idx + real_len - head.len()],
-			);
+		let raw_l = self.rbound * self.channels;
+		let raw_r = (true_right + WINDOW_SIZE) * self.channels;
+
+		if raw_l >= self.samples.len() {
+			return;
 		}
-	}
 
-	/// Add delta ffts to the front
-	pub fn process_forward(&mut self, samples: Samples, delta: usize) {
-		let new_ffts = sliding_spectra(
-			&samples[self.right_bound
-				..self.right_bound + ((delta - 1) * STEP_SIZE + WINDOW_SIZE) * self.channels]
-				.chunks_exact(self.channels)
-				.map(|x| x[0] as f32 / i16::MAX as f32)
-				.collect::<Vec<_>>(),
-		);
+		let mono: Vec<f32> = self.samples[raw_l..raw_r.min(self.samples.len())]
+			.chunks_exact(self.channels)
+			.map(|x| x[0] as f32 / i16::MAX as f32)
+			.collect();
 
+		let new_ffts = sliding_spectra(&mono);
 		self.fft_buf.extend(new_ffts.data);
-		self.right_bound += delta * STEP_SIZE * self.channels;
+
+		self.rbound = true_right;
 	}
 
-	/// Add delta ffts to the back
-	pub fn process_back(&mut self, samples: Samples, delta: usize) {
-		let new_ffts = sliding_spectra(
-			&samples[self.left_bound - ((delta - 1) * STEP_SIZE + WINDOW_SIZE) * self.channels
-				..self.left_bound]
-				.chunks_exact(self.channels)
-				.map(|x| x[0] as f32 / i16::MAX as f32)
-				.collect::<Vec<_>>(),
-		);
+	pub fn extend_back(&mut self, start_frame: usize) {
+		let true_start = floor_step(start_frame);
+		if true_start >= self.lbound {
+			return;
+		}
 
+		let raw_l = true_start * self.channels;
+		let raw_r = (self.lbound + WINDOW_SIZE) * self.channels;
+
+		let mono: Vec<f32> = self.samples[raw_l..raw_r.min(self.samples.len())]
+			.chunks_exact(self.channels)
+			.map(|x| x[0] as f32 / i16::MAX as f32)
+			.collect();
+
+		let new_ffts = sliding_spectra(&mono);
 		for &datum in new_ffts.data.iter().rev() {
 			self.fft_buf.push_front(datum);
 		}
-		self.left_bound -= delta * STEP_SIZE * self.channels;
+
+		self.lbound = true_start;
 	}
 
-	pub fn drop_back(&mut self, delta: usize) {
-		self.fft_buf.drain(..delta * SPECTRUM_SIZE);
-		self.left_bound += delta * STEP_SIZE * self.channels;
+	pub fn drop_back(&mut self, new_left_frame: usize) {
+		let new_left = floor_step(new_left_frame);
+		if new_left <= self.lbound {
+			return;
+		}
+		let drop_cols = (new_left - self.lbound) / STEP_SIZE;
+		self.fft_buf.drain(..drop_cols * SPECTRUM_SIZE);
+		self.lbound += drop_cols * STEP_SIZE;
 	}
 }
 
-struct SongState {
+struct SongTime {
 	start_timestamp: Duration,
 	started_playing: Option<Instant>,
 	song_length: Duration,
 }
 
-impl SongState {
+impl SongTime {
 	fn new(song_length: Duration) -> Self {
 		Self {
 			start_timestamp: Duration::ZERO,
@@ -246,15 +270,24 @@ impl SongState {
 			},
 			Action::Rewind => {
 				if let Some(inst) = self.started_playing {
-					self.started_playing = None;
 					self.start_timestamp += inst.elapsed();
+					self.start_timestamp = self
+						.start_timestamp
+						.checked_sub(Duration::from_secs_f32(0.5))
+						.unwrap_or_default();
+					self.started_playing = Some(Instant::now());
+				} else {
+					self.start_timestamp = self
+						.start_timestamp
+						.checked_sub(Duration::from_secs_f32(0.5))
+						.unwrap_or_default();
 				}
-				self.start_timestamp = self
-					.start_timestamp
-					.checked_sub(Duration::from_secs_f32(0.5))
-					.unwrap_or_default();
 			},
 		}
+	}
+
+	fn is_playing(&self) -> bool {
+		self.started_playing.is_some()
 	}
 }
 
@@ -290,9 +323,8 @@ fn run_window(
 	let mut visual_sensitivity: f32 = 0.05;
 
 	let mut read_buf: Box<[f32]> = vec![0.0f32; PRECOMPUTE * SPECTRUM_SIZE].into();
-	let mut prev_fft_idx = 0usize.wrapping_sub(1); //-1 :)
-	let mut maker: FftMaker = FftMaker::new(channels);
-	let mut song: SongState = SongState::new(Duration::from_secs(
+	let mut maker: FftMaker = FftMaker::new(channels, samples);
+	let mut song: SongTime = SongTime::new(Duration::from_secs(
 		samples.len() as u64 / channels as u64 / samples_per_second as u64,
 	));
 	let _ = event_loop.run(|event, window_hook| {
@@ -301,42 +333,47 @@ fn run_window(
 			..
 		} = event
 		{
-			let frame = pixels.frame_mut();
-			let frame_width = display_width / pixel_scale;
-			let sample_idx = song.sample_idx(samples_per_second as usize);
 			song.check_end();
+			if song.is_playing() {
+				let frame = pixels.frame_mut();
+				let frame_width = display_width / pixel_scale;
 
-			// Calculate how many pixels just went off screen.
-			let curr_fft_index = sample_idx / STEP_SIZE;
-			let delta = curr_fft_index.wrapping_sub(prev_fft_idx);
-			if delta == 0 {
-				return;
+				let n_frames = samples.len() / channels as usize;
+
+				// center in frames, clamp to [0, n_frames]
+				let mut center = song.sample_idx(samples_per_second as usize);
+				center = center.min(n_frames);
+
+				let half = (frame_width as usize / 2) * STEP_SIZE;
+				let span = (frame_width as usize) * STEP_SIZE;
+
+				let mut left = center.saturating_sub(half);
+				let mut right = left + span;
+
+				// clamp right so extend_front can safely read WINDOW_SIZE ahead
+				let right_max = n_frames.saturating_sub(WINDOW_SIZE);
+				if right > right_max {
+					right = right_max;
+					left = right.saturating_sub(span);
+				}
+
+				let demand = SPECTRUM_SIZE * frame_width as usize;
+				let render = &mut read_buf[..demand];
+
+				maker.render(left, render);
+
+				gen_spectrogram_into(
+					Slice2D {
+						data: &render,
+						width: SPECTRUM_SIZE,
+					},
+					visual_sensitivity,
+					MutSlice2D {
+						data: cast_slice_mut(frame),
+						width: frame_width as usize,
+					},
+				);
 			}
-
-			prev_fft_idx = curr_fft_index;
-			maker.process_forward(&samples, delta);
-			let demand = SPECTRUM_SIZE * frame_width as usize;
-			maker.yield_ffts(&mut read_buf[..demand]);
-
-			// maker.first_visible_idx += delta;
-
-			let num_samples_represented = STEP_SIZE * frame_width as usize;
-			if sample_idx > maker.left_bound + num_samples_represented {
-				maker.first_visible_idx += (delta - 2) * SPECTRUM_SIZE;
-				maker.drop_back(delta);
-			}
-
-			gen_spectrogram_into(
-				Slice2D {
-					data: &read_buf[..demand],
-					width: SPECTRUM_SIZE,
-				},
-				visual_sensitivity,
-				MutSlice2D {
-					data: cast_slice_mut(frame),
-					width: frame_width as usize,
-				},
-			);
 
 			if pixels.render().is_err() {
 				window_hook.exit();
@@ -367,11 +404,11 @@ fn run_window(
 				song.handle(Action::PlayPause);
 			}
 
-			if input.key_pressed(KeyCode::ArrowRight) {
+			if input.key_pressed_os(KeyCode::ArrowRight) {
 				tx.send(Action::Advance).unwrap();
 				song.handle(Action::Advance);
 			}
-			if input.key_pressed(KeyCode::ArrowLeft) {
+			if input.key_pressed_os(KeyCode::ArrowLeft) {
 				tx.send(Action::Rewind).unwrap();
 				song.handle(Action::Rewind);
 			}
