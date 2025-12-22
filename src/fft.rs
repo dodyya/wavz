@@ -25,6 +25,15 @@ pub struct MutSlice2D<'a, T> {
 	pub width: usize,
 }
 
+impl<'a, T> MutSlice2D<'a, T> {
+	pub fn reborrow(&mut self) -> MutSlice2D<'_, T> {
+		MutSlice2D {
+			data: self.data,
+			width: self.width,
+		}
+	}
+}
+
 impl<T> Slice2D<'_, T> {
 	pub fn row(&self, row: usize) -> &[T] {
 		&self.data[row * self.width..(row + 1) * self.width]
@@ -36,6 +45,15 @@ impl<T: Copy> Index<(usize, usize)> for Slice2D<'_, T> {
 
 	fn index(&self, (x, y): (usize, usize)) -> &Self::Output {
 		&self.data[y * self.width + x]
+	}
+}
+
+impl<'a, T> From<MutSlice2D<'a, T>> for Slice2D<'a, T> {
+	fn from(value: MutSlice2D<'a, T>) -> Self {
+		Slice2D {
+			data: value.data,
+			width: value.width,
+		}
 	}
 }
 
@@ -95,38 +113,36 @@ impl<T: Default + Copy> BoxSlice2D<T> {
 	}
 }
 
-pub type Float = f32;
-
-pub(crate) static SINE: LazyLock<Vec<Float>> = LazyLock::new(|| {
+pub(crate) static SINE: LazyLock<Vec<f32>> = LazyLock::new(|| {
 	let mut v = Vec::with_capacity(WINDOW_SIZE);
 	for i in 0..WINDOW_SIZE {
-		v.push((i as Float * std::f32::consts::TAU / WINDOW_SIZE as Float).sin());
+		v.push((i as f32 * std::f32::consts::TAU / WINDOW_SIZE as f32).sin());
 	}
 	v
 });
 
 /// Takes an fft result and returns the magnitude vector of the Nyquist range
-fn spectrum(fr: &[Float], fi: &[Float]) -> Vec<Float> {
+fn spectrum(fr: &[f32], fi: &[f32]) -> Vec<f32> {
 	let mut v = vec![0.0; WINDOW_SIZE / 2];
 	spectrum_into(fr, fi, &mut v);
 	v
 }
 
-fn spectrum_into(fr: &[Float], fi: &[Float], out: &mut [Float]) {
+fn spectrum_into(fr: &[f32], fi: &[f32], out: &mut [f32]) {
 	for (e, i) in (0..WINDOW_SIZE / 2).rev().enumerate() {
 		out[e] = fr[i].hypot(fi[i]);
 	}
 }
 
 /// Takes only the real signal and performs fft + spectrum
-pub fn fft_spectrum(real: &mut [Float]) -> Vec<Float> {
+pub fn fft_spectrum(real: &mut [f32]) -> Vec<f32> {
 	// assert_eq!(RESOLUTION, v.len());
 	let mut imag = vec![0.0; WINDOW_SIZE];
 	fft_inplace(real, &mut imag);
 	spectrum(&real, &imag)
 }
 
-pub fn fft_spectrum_into(input: &mut [Float], out: &mut [Float]) {
+pub fn fft_spectrum_into(input: &mut [f32], out: &mut [f32]) {
 	let mut fi = vec![0.0; WINDOW_SIZE];
 	fft_inplace(input, &mut fi);
 	spectrum_into(input, &fi, out);
@@ -134,7 +150,7 @@ pub fn fft_spectrum_into(input: &mut [Float], out: &mut [Float]) {
 
 /// Takes in a complex slice as real and imaginary parts, and
 /// performs the FFT in-place. Magic.
-pub fn fft_inplace(fr: &mut [Float], fi: &mut [Float]) {
+pub fn fft_inplace(fr: &mut [f32], fi: &mut [f32]) {
 	assert_eq!(WINDOW_SIZE, fr.len());
 	assert!(WINDOW_SIZE.is_power_of_two() && fi.len() == WINDOW_SIZE);
 
@@ -159,22 +175,22 @@ pub fn fft_inplace(fr: &mut [Float], fi: &mut [Float]) {
 		for m in 0..temp_len {
 			let mut j: usize = m << lookup;
 
-			let w: Cplx<Float> = Cplx {
-				re: SINE[j + num_samples / 4] / 2 as Float,
-				im: -SINE[j] / 2 as Float,
+			let w: Cplx<f32> = Cplx {
+				re: SINE[j + num_samples / 4] / 2 as f32,
+				im: -SINE[j] / 2 as f32,
 			};
 
 			for i in (m..num_samples).step_by(combined_len) {
 				j = i + temp_len;
 
-				let t: Cplx<Float> = Cplx {
+				let t: Cplx<f32> = Cplx {
 					re: w.re * fr[j] - w.im * fi[j],
 					im: w.re * fi[j] + w.im * fr[j],
 				};
 
 				let q = Cplx {
-					re: fr[i] / 2 as Float,
-					im: fi[i] / 2 as Float,
+					re: fr[i] / 2 as f32,
+					im: fi[i] / 2 as f32,
 				};
 
 				fr[j] = q.re - t.re;

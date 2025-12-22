@@ -1,4 +1,4 @@
-use crate::graphics::gen_spectrogram;
+use crate::graphics::spectrogram;
 use crate::parser::RiffWavePcm;
 use std::fmt::Debug;
 use std::time::Instant;
@@ -29,7 +29,7 @@ const RGBA: usize = 4; // Magic number for bytes/color
 const INERTIA_RATIO: f32 = 5f32 / 6f32; // bigger number => more inertia
 
 pub fn precomp_vis(RiffWavePcm { samples, samples_per_second }: RiffWavePcm) {
-	let spectra = gen_spectrogram(
+	let spectra = spectrogram(
 		sliding_spectra(
 			&samples
 				.into_iter()

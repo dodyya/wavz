@@ -2,7 +2,6 @@ use bytemuck::checked::cast_slice_mut;
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use cpal::{BufferSize, SampleRate, StreamConfig};
 use pixels::{Pixels, SurfaceTexture};
-// use ringbuf::HeapRb;
 use std::collections::VecDeque;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
@@ -13,8 +12,8 @@ use winit::keyboard::KeyCode;
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-use crate::fft::{MutSlice2D, SPECTRUM_SIZE, STEP_SIZE, Slice2D, WINDOW_SIZE, sliding_spectra};
-use crate::graphics::gen_spectrogram_into;
+use crate::fft::{MutSlice2D, SPECTRUM_SIZE, STEP_SIZE, WINDOW_SIZE, sliding_spectra};
+use crate::graphics::{draw_vbar, spectrogram_into};
 use crate::parser::{Channels, MmapedRiffPcm, Samples, from_mmap, mmap_file};
 
 const WIDTH: usize = 2000;
@@ -56,7 +55,6 @@ fn spawn_audio(
 	let config = StreamConfig {
 		channels: channels as u16,
 		sample_rate: SampleRate(samples_per_second),
-		// TODO: lower this value so that the audio thread is more responsive
 		buffer_size: BufferSize::Default,
 	};
 
@@ -68,7 +66,6 @@ fn spawn_audio(
 			&config,
 			move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
 				for event in rx.try_iter() {
-					// flip play/pause, seek player_head, restart track, ...
 					match event {
 						Action::PlayPause => {
 							paused ^= true;
@@ -109,11 +106,11 @@ fn spawn_audio(
 	stream
 }
 
-const PRECOMPUTE: usize = 10000; //Maximum number of FFTs we expect to ever have to precompute
+const PRECOMPUTE: usize = 10_000; //Maximum number of FFTs we expect to ever have to precompute
 struct FftMaker {
 	fft_buf: VecDeque<f32>,
-	rbound: usize, // Index into samples, representing the start of the first fft right of the fft_buf
-	lbound: usize, // Index into samples, representing the start of the first fft in the fft_buf
+	rbound: usize, // Frame index representing the start of the first fft right of the fft_buf
+	lbound: usize, // Frame index representing the start of the first fft in the fft_buf
 	channels: usize,
 	samples: Samples,
 }
@@ -324,8 +321,8 @@ fn run_window(
 
 	let mut read_buf: Box<[f32]> = vec![0.0f32; PRECOMPUTE * SPECTRUM_SIZE].into();
 	let mut maker: FftMaker = FftMaker::new(channels, samples);
-	let mut song: SongTime = SongTime::new(Duration::from_secs(
-		samples.len() as u64 / channels as u64 / samples_per_second as u64,
+	let mut song: SongTime = SongTime::new(Duration::from_millis(
+		(1000 * samples.len() as u64 / channels as u64 / samples_per_second as u64) as u64 - 101,
 	));
 	let _ = event_loop.run(|event, window_hook| {
 		if let Event::WindowEvent {
@@ -335,8 +332,11 @@ fn run_window(
 		{
 			song.check_end();
 			if song.is_playing() {
-				let frame = pixels.frame_mut();
 				let frame_width = display_width / pixel_scale;
+				let mut frame = MutSlice2D {
+					data: cast_slice_mut(pixels.frame_mut()),
+					width: frame_width as usize,
+				};
 
 				let n_frames = samples.len() / channels as usize;
 
@@ -358,21 +358,15 @@ fn run_window(
 				}
 
 				let demand = SPECTRUM_SIZE * frame_width as usize;
-				let render = &mut read_buf[..demand];
+				let render = MutSlice2D {
+					data: &mut read_buf[..demand],
+					width: SPECTRUM_SIZE,
+				};
 
-				maker.render(left, render);
-
-				gen_spectrogram_into(
-					Slice2D {
-						data: &render,
-						width: SPECTRUM_SIZE,
-					},
-					visual_sensitivity,
-					MutSlice2D {
-						data: cast_slice_mut(frame),
-						width: frame_width as usize,
-					},
-				);
+				maker.render(left, render.data);
+				spectrogram_into(render.into(), visual_sensitivity, frame.reborrow());
+				let bar_location = (center - left) / STEP_SIZE;
+				draw_vbar(bar_location, frame.reborrow());
 			}
 
 			if pixels.render().is_err() {

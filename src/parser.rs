@@ -3,7 +3,6 @@ use core::fmt;
 use std::{
 	fs::File,
 	io::{self, SeekFrom},
-	path::Path,
 	sync::OnceLock,
 };
 pub type Samples = &'static [i16];

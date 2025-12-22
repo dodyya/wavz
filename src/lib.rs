@@ -54,8 +54,8 @@ mod tests {
 	#[test]
 	fn synthetic_decompose() {
 		let size = WINDOW_SIZE;
-		let mut re = Vec::<Float>::with_capacity(size);
-		let mut im = Vec::<Float>::with_capacity(size);
+		let mut re = Vec::<f32>::with_capacity(size);
+		let mut im = Vec::<f32>::with_capacity(size);
 
 		let component =
 			|x: f32, freq: f32| (2.0 * std::f32::consts::PI * freq / size as f32 * x).cos();
@@ -69,8 +69,8 @@ mod tests {
 				+ component(x, 37.0)
 		};
 		for i in 0..size {
-			re.push(combination(i as Float));
-			im.push(0 as Float);
+			re.push(combination(i as f32));
+			im.push(0 as f32);
 		}
 
 		fft_inplace(&mut re, &mut im);
@@ -92,12 +92,12 @@ mod tests {
 		let samples = &*Box::leak(samples);
 		let samples = &samples[..WINDOW_SIZE];
 		println!("{}", samples.len());
-		let mut re: Vec<Float> = Vec::with_capacity(samples.len());
-		let mut im: Vec<Float> = Vec::with_capacity(samples.len());
+		let mut re: Vec<f32> = Vec::with_capacity(samples.len());
+		let mut im: Vec<f32> = Vec::with_capacity(samples.len());
 
 		for &sample in samples {
-			re.push(sample as Float);
-			im.push(0 as Float);
+			re.push(sample as f32);
+			im.push(0 as f32);
 		}
 
 		fft_inplace(&mut re, &mut im);
@@ -125,10 +125,10 @@ mod tests {
 		let RiffWavePcm { samples, samples_per_second } = RiffWavePcm::parse(file).unwrap();
 		let samples = &*Box::leak(samples);
 		let samples = &samples[..WINDOW_SIZE];
-		let mut re: Vec<Float> = Vec::with_capacity(samples.len());
+		let mut re: Vec<f32> = Vec::with_capacity(samples.len());
 
 		for &sample in samples {
-			re.push(sample as Float);
+			re.push(sample as f32);
 		}
 
 		let amplitude = fft_spectrum(&mut re);
