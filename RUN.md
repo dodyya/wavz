@@ -26,6 +26,6 @@ cargo run --release -- visualize foo.wav
 
 - `mic`: Visualize microphone input.
 - `asciimic`: Visualize microphone input in ASCII mode.
-- `visualize <FILE_PATH>`: Visualize a WAV file in real-time.
+- `vis <FILE_PATH>`: Visualize a WAV file in real-time.
 - `play <FILE_PATH>`: Play a WAV file (audio only).
 - `precomp <FILE_PATH>`: Visualize a WAV file (precomputed mode).
