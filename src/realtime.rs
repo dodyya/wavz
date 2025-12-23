@@ -16,11 +16,10 @@ use crate::fft::{MutSlice2D, SPECTRUM_SIZE, STEP_SIZE, WINDOW_SIZE, sliding_spec
 use crate::graphics::{draw_vbar, spectrogram_into};
 use crate::parser::{Channels, MmapedRiffPcm, Samples, from_mmap, mmap_file};
 
-const WIDTH: usize = 2000;
+const WIDTH: usize = 3000;
 const MAX_HEIGHT: u32 = WINDOW_SIZE as u32 / 2;
 
 pub fn realtime_vis(file_path: &str) {
-	// let file_buf: &'static [u8] = ;
 	let mmap: MmapedRiffPcm<'static> = from_mmap(mmap_file(file_path));
 	let (tx, rx) = channel();
 	let _dontdrop = spawn_audio(rx, mmap);
@@ -109,8 +108,8 @@ fn spawn_audio(
 const PRECOMPUTE: usize = 10_000; //Maximum number of FFTs we expect to ever have to precompute
 struct FftMaker {
 	fft_buf: VecDeque<f32>,
-	rbound: usize, // Frame index representing the start of the first fft right of the fft_buf
-	lbound: usize, // Frame index representing the start of the first fft in the fft_buf
+	rbound: usize, // Bounds of what lies in the buffer, in "frames" (sample buffer ignoring channels)
+	lbound: usize,
 	channels: usize,
 	samples: Samples,
 }
@@ -134,7 +133,7 @@ impl FftMaker {
 		}
 	}
 
-	fn render(&mut self, start_frame: usize, out: &mut [f32]) {
+	fn r#yield(&mut self, start_frame: usize, out: &mut [f32]) {
 		// number of columns == out.len()/SPECTRUM_SIZE
 		let start_frame = floor_step(start_frame);
 		let end_frame = start_frame + (out.len() / SPECTRUM_SIZE) * STEP_SIZE;
@@ -283,10 +282,6 @@ impl SongTime {
 			},
 		}
 	}
-
-	fn is_playing(&self) -> bool {
-		self.started_playing.is_some()
-	}
 }
 
 fn run_window(
@@ -332,7 +327,6 @@ fn run_window(
 		} = event
 		{
 			song.check_end();
-			// if song.is_playing() {
 			let frame_width = display_width / pixel_scale;
 			let mut frame = MutSlice2D {
 				data: cast_slice_mut(pixels.frame_mut()),
@@ -341,7 +335,6 @@ fn run_window(
 
 			let n_frames = samples.len() / channels as usize;
 
-			// center in frames, clamp to [0, n_frames]
 			let mut center = song.sample_idx(samples_per_second as usize);
 			center = center.min(n_frames);
 
@@ -351,7 +344,6 @@ fn run_window(
 			let mut left = center.saturating_sub(half);
 			let mut right = left + span;
 
-			// clamp right so extend_front can safely read WINDOW_SIZE ahead
 			let right_max = n_frames.saturating_sub(WINDOW_SIZE);
 			if right > right_max {
 				right = right_max;
@@ -359,13 +351,14 @@ fn run_window(
 			}
 
 			let demand = SPECTRUM_SIZE * frame_width as usize;
-			let render = MutSlice2D {
+			let prerender = MutSlice2D {
 				data: &mut read_buf[..demand],
 				width: SPECTRUM_SIZE,
 			};
 
-			maker.render(left, render.data);
-			spectrogram_into(render.into(), visual_sensitivity, frame.reborrow());
+			maker.r#yield(left, prerender.data);
+			spectrogram_into(prerender.into(), visual_sensitivity, frame.reborrow());
+
 			let bar_location = (center - left) / STEP_SIZE;
 			draw_vbar(bar_location, frame.reborrow());
 
