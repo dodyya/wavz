@@ -13,17 +13,17 @@ use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 use crate::fft::{MutSlice2D, SPECTRUM_SIZE, STEP_SIZE, WINDOW_SIZE, sliding_spectra};
-use crate::graphics::{draw_vbar, spectrogram_into};
+use crate::graphics::{ColorScheme, draw_vbar, spectrogram_into};
 use crate::parser::{Channels, MmapedRiffPcm, Samples, from_mmap, mmap_file};
 
 const WIDTH: usize = 3000;
 const MAX_HEIGHT: u32 = WINDOW_SIZE as u32 / 2;
 
-pub fn realtime_vis(file_path: &str) {
+pub fn realtime_vis(file_path: &str, cs: ColorScheme) {
 	let mmap: MmapedRiffPcm<'static> = from_mmap(mmap_file(file_path));
 	let (tx, rx) = channel();
 	let _dontdrop = spawn_audio(rx, mmap);
-	run_window(tx, mmap);
+	run_window(tx, mmap, cs);
 }
 
 enum Action {
@@ -291,6 +291,7 @@ fn run_window(
 		samples_per_second,
 		channels,
 	}: MmapedRiffPcm<'static>,
+	cs: ColorScheme,
 ) {
 	let event_loop = EventLoop::new().unwrap();
 	let mut input = WinitInputHelper::new();
@@ -357,7 +358,7 @@ fn run_window(
 			};
 
 			maker.r#yield(left, prerender.data);
-			spectrogram_into(prerender.into(), visual_sensitivity, frame.reborrow());
+			spectrogram_into(prerender.into(), visual_sensitivity, frame.reborrow(), cs);
 
 			let bar_location = (center - left) / STEP_SIZE;
 			draw_vbar(bar_location, frame.reborrow());

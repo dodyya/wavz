@@ -14,7 +14,7 @@ use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 use crate::fft::{SPECTRUM_SIZE, STEP_SIZE, WINDOW_SIZE, fft_spectrum};
-use crate::graphics::render_spectrum;
+use crate::graphics::{ColorScheme, render_spectrum};
 use crate::rgba::Rgba;
 
 const PIXEL_SCALE: usize = 2;
@@ -25,7 +25,7 @@ const RGBA: usize = 4;
 enum FftEvent {
 	PixelsReady { pix: Arc<[Rgba]> },
 }
-pub fn mic_vis() {
+pub fn mic_vis(cs: ColorScheme) {
 	let host = cpal::default_host();
 	let device = host.default_input_device().unwrap();
 	let config = device.default_input_config().unwrap();
@@ -84,6 +84,7 @@ pub fn mic_vis() {
 							&mut (incoming.iter().map(|x| mic_gain(*x))).collect::<Vec<f32>>(),
 						),
 						0.1,
+						cs,
 					)
 					.into_boxed_slice(),
 				),

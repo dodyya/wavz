@@ -1,4 +1,4 @@
-use crate::graphics::spectrogram;
+use crate::graphics::{ColorScheme, spectrogram};
 use crate::parser::RiffWavePcm;
 use std::fmt::Debug;
 use std::time::Instant;
@@ -28,7 +28,7 @@ const MAX_HEIGHT: u32 = 2000; // Maximum screen height,
 const RGBA: usize = 4; // Magic number for bytes/color
 const INERTIA_RATIO: f32 = 5f32 / 6f32; // bigger number => more inertia
 
-pub fn precomp_vis(RiffWavePcm { samples, samples_per_second }: RiffWavePcm) {
+pub fn precomp_vis(RiffWavePcm { samples, samples_per_second }: RiffWavePcm, cs: ColorScheme) {
 	let spectra = spectrogram(
 		sliding_spectra(
 			&samples
@@ -38,6 +38,7 @@ pub fn precomp_vis(RiffWavePcm { samples, samples_per_second }: RiffWavePcm) {
 		)
 		.unbox(),
 		0.005,
+		cs,
 	);
 	crate::precomp::run_window(spectra, samples_per_second / STEP_SIZE as u32);
 }

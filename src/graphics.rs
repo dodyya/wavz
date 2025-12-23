@@ -1,15 +1,34 @@
 use crate::fft::{BoxSlice2D, MutSlice2D, SPECTRUM_SIZE, Slice2D};
 use crate::rgba::*;
 
-pub fn spectrogram(spectra: Slice2D<f32>, range: f32) -> BoxSlice2D<Rgba> {
+#[derive(Clone, Copy, Default)]
+pub struct ColorScheme(usize);
+
+impl ColorScheme {
+	pub fn new(n: usize) -> Self {
+		Self(n.clamp(1, 3) - 1)
+	}
+
+	fn lut(self) -> &'static [[u8; 3]; 256] {
+		const LUTS: [&[[u8; 3]; 256]; 3] = [&VIRIDIS_LUT_RGB, &INFERNO_LUT_RGB, &BONE_LUT_RGB];
+		LUTS[self.0]
+	}
+}
+
+pub fn spectrogram(spectra: Slice2D<f32>, range: f32, cs: ColorScheme) -> BoxSlice2D<Rgba> {
 	let img_height = spectra.width; // TRANSPOSE!!
 	let img_width = spectra.data.len() / img_height;
 	let mut img = BoxSlice2D::<Rgba>::new(img_width, img_height);
-	spectrogram_into(spectra, range, img.unbox_mut());
+	spectrogram_into(spectra, range, img.unbox_mut(), cs);
 	img
 }
 
-pub fn spectrogram_into(spectra: Slice2D<f32>, sens: f32, mut out: MutSlice2D<Rgba>) {
+pub fn spectrogram_into(
+	spectra: Slice2D<f32>,
+	sens: f32,
+	mut out: MutSlice2D<Rgba>,
+	cs: ColorScheme,
+) {
 	let n_spectra = spectra.data.len() / SPECTRUM_SIZE;
 	let n_rows_visible = out.data.len() / n_spectra;
 	let n_rows_invisible = SPECTRUM_SIZE - n_rows_visible;
@@ -17,15 +36,15 @@ pub fn spectrogram_into(spectra: Slice2D<f32>, sens: f32, mut out: MutSlice2D<Rg
 	// Perhaps profile loop order.
 	for y in 0..n_rows_visible {
 		for x in 0..n_spectra {
-			out[(x, y)] = mapper(sens)(spectra[(y + n_rows_invisible, x)]);
+			out[(x, y)] = mapper(sens, cs)(spectra[(y + n_rows_invisible, x)]);
 		}
 	}
 }
 
-pub fn render_spectrum(spectrum: &[f32], sens: f32) -> Vec<Rgba> {
+pub fn render_spectrum(spectrum: &[f32], sens: f32, cs: ColorScheme) -> Vec<Rgba> {
 	spectrum
 		.iter()
-		.map(move |&value| mapper(sens)(value))
+		.map(move |&value| mapper(sens, cs)(value))
 		.collect()
 }
 
@@ -51,13 +70,14 @@ fn clamp01(x: f32) -> f32 {
 		x
 	}
 }
-pub fn mapper(sens: f32) -> impl Fn(f32) -> Rgba + Copy {
+pub fn mapper(sens: f32, cs: ColorScheme) -> impl Fn(f32) -> Rgba + Copy {
+	let lut = cs.lut();
 	move |x: f32| {
 		let eps = 1.0e-12_f32;
 		let db = 20.0 * (x.max(0.0) + eps).log10() + 30.0 * sens;
 		let t = clamp01((db + 80.0) / 80.0);
 		let idx = (t * 255.0 + 0.5) as usize;
-		let [r, g, b] = VIRIDIS_LUT_RGB[idx.min(255)];
+		let [r, g, b] = lut[idx.min(255)];
 		Rgba { r, g, b, a: 255 }
 	}
 }

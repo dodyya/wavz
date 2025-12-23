@@ -12,15 +12,16 @@ use cpal::{BufferSize, SampleRate, StreamConfig};
 use memmap2::Mmap;
 
 use crate::fft::{STEP_SIZE, fft_spectrum};
+use crate::graphics::ColorScheme;
 pub use crate::mic::mic_vis;
 use crate::parser::{MmapedRiffPcm, RiffWavePcm, from_mmap};
 pub use crate::realtime::realtime_vis;
 
-pub fn precomp_vis(file_path: &str) {
+pub fn precomp_vis(file_path: &str, cs: ColorScheme) {
 	let data = File::open(file_path).unwrap();
 	let data = RiffWavePcm::parse(data).unwrap();
 
-	crate::precomp::precomp_vis(data);
+	crate::precomp::precomp_vis(data, cs);
 }
 
 pub fn mic_ascii() {
