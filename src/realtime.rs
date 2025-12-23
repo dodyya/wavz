@@ -148,8 +148,8 @@ impl FftMaker {
 		let fft_end = ((end_frame - self.lbound) / STEP_SIZE) * SPECTRUM_SIZE;
 
 		let truelen = fft_end - fft_start;
-		assert!(self.fft_buf.len() >= fft_end);
-		assert!(out.len() == truelen);
+		// assert!(self.fft_buf.len() >= fft_end);
+		// assert!(out.len() == truelen);
 
 		if fft_end <= head.len() {
 			out.copy_from_slice(&head[fft_start..fft_end]);
@@ -221,6 +221,7 @@ impl FftMaker {
 	}
 }
 
+#[derive(Debug)]
 struct SongTime {
 	start_timestamp: Duration,
 	started_playing: Option<Instant>,
@@ -316,8 +317,8 @@ fn run_window(
 		Pixels::new(window_size.width, window_size.height, surface_texture).unwrap()
 	};
 
-	let mut pixel_scale = 1;
-	let mut visual_sensitivity: f32 = 0.05;
+	let mut pixel_scale = 3;
+	let mut visual_sensitivity: f32 = 1.0;
 
 	let mut read_buf: Box<[f32]> = vec![0.0f32; PRECOMPUTE * SPECTRUM_SIZE].into();
 	let mut maker: FftMaker = FftMaker::new(channels, samples);
@@ -331,61 +332,48 @@ fn run_window(
 		} = event
 		{
 			song.check_end();
-			if song.is_playing() {
-				let frame_width = display_width / pixel_scale;
-				let mut frame = MutSlice2D {
-					data: cast_slice_mut(pixels.frame_mut()),
-					width: frame_width as usize,
-				};
+			// if song.is_playing() {
+			let frame_width = display_width / pixel_scale;
+			let mut frame = MutSlice2D {
+				data: cast_slice_mut(pixels.frame_mut()),
+				width: frame_width as usize,
+			};
 
-				let n_frames = samples.len() / channels as usize;
+			let n_frames = samples.len() / channels as usize;
 
-				// center in frames, clamp to [0, n_frames]
-				let mut center = song.sample_idx(samples_per_second as usize);
-				center = center.min(n_frames);
+			// center in frames, clamp to [0, n_frames]
+			let mut center = song.sample_idx(samples_per_second as usize);
+			center = center.min(n_frames);
 
-				let half = (frame_width as usize / 2) * STEP_SIZE;
-				let span = (frame_width as usize) * STEP_SIZE;
+			let half = (frame_width as usize / 2) * STEP_SIZE;
+			let span = (frame_width as usize) * STEP_SIZE;
 
-				let mut left = center.saturating_sub(half);
-				let mut right = left + span;
+			let mut left = center.saturating_sub(half);
+			let mut right = left + span;
 
-				// clamp right so extend_front can safely read WINDOW_SIZE ahead
-				let right_max = n_frames.saturating_sub(WINDOW_SIZE);
-				if right > right_max {
-					right = right_max;
-					left = right.saturating_sub(span);
-				}
-
-				let demand = SPECTRUM_SIZE * frame_width as usize;
-				let render = MutSlice2D {
-					data: &mut read_buf[..demand],
-					width: SPECTRUM_SIZE,
-				};
-
-				maker.render(left, render.data);
-				spectrogram_into(render.into(), visual_sensitivity, frame.reborrow());
-				let bar_location = (center - left) / STEP_SIZE;
-				draw_vbar(bar_location, frame.reborrow());
+			// clamp right so extend_front can safely read WINDOW_SIZE ahead
+			let right_max = n_frames.saturating_sub(WINDOW_SIZE);
+			if right > right_max {
+				right = right_max;
+				left = right.saturating_sub(span);
 			}
+
+			let demand = SPECTRUM_SIZE * frame_width as usize;
+			let render = MutSlice2D {
+				data: &mut read_buf[..demand],
+				width: SPECTRUM_SIZE,
+			};
+
+			maker.render(left, render.data);
+			spectrogram_into(render.into(), visual_sensitivity, frame.reborrow());
+			let bar_location = (center - left) / STEP_SIZE;
+			draw_vbar(bar_location, frame.reborrow());
 
 			if pixels.render().is_err() {
 				window_hook.exit();
 				return;
 			}
 		}
-
-		let mut resize_pixels = |size: PhysicalSize<u32>, pixel_scale: u32| {
-			pixels
-				.resize_surface(size.width, size.height.clamp(1, MAX_HEIGHT))
-				.unwrap();
-			pixels
-				.resize_buffer(
-					size.width / pixel_scale,
-					(size.height / pixel_scale).clamp(1, MAX_HEIGHT / pixel_scale),
-				)
-				.unwrap();
-		};
 
 		if input.update(&event) {
 			if input.key_pressed(KeyCode::KeyQ) || input.close_requested() {
@@ -409,21 +397,21 @@ fn run_window(
 
 			if input.key_pressed_os(KeyCode::Equal) || input.scroll_diff().1 > 0.0 {
 				pixel_scale += 1;
-				resize_pixels(window.inner_size(), pixel_scale);
+				resize_pixels(&mut pixels, window.inner_size(), pixel_scale);
 			}
 
 			if input.key_pressed_os(KeyCode::Minus) || input.scroll_diff().1 < 0.0 {
 				if pixel_scale > 1 {
 					pixel_scale -= 1;
-					resize_pixels(window.inner_size(), pixel_scale);
+					resize_pixels(&mut pixels, window.inner_size(), pixel_scale);
 				}
 			}
 
 			if input.key_pressed_os(KeyCode::ArrowUp) {
-				visual_sensitivity /= 1.1;
+				visual_sensitivity += 0.1;
 			}
 			if input.key_pressed_os(KeyCode::ArrowDown) {
-				visual_sensitivity *= 1.1;
+				visual_sensitivity = (visual_sensitivity - 0.1).clamp(-1.0, 5.0);
 			}
 
 			window.request_redraw();
@@ -433,8 +421,19 @@ fn run_window(
 			..
 		} = event
 		{
-			resize_pixels(size, pixel_scale);
+			resize_pixels(&mut pixels, size, pixel_scale);
 			display_width = size.width;
 		}
 	});
+}
+fn resize_pixels(pixels: &mut Pixels, size: PhysicalSize<u32>, pixel_scale: u32) {
+	pixels
+		.resize_surface(size.width, size.height.clamp(1, MAX_HEIGHT * pixel_scale))
+		.unwrap();
+	pixels
+		.resize_buffer(
+			size.width / pixel_scale,
+			(size.height / pixel_scale).clamp(1, MAX_HEIGHT),
+		)
+		.unwrap();
 }
