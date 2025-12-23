@@ -1733,7 +1733,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "wavez"
+name = "wavz"
 version = "0.1.0"
 dependencies = [
  "bytemuck",

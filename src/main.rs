@@ -1,5 +1,5 @@
 use std::env::args;
-use wavez::demos::*;
+use wavz::demos::*;
 fn main() {
 	let mut args = args();
 	let _ = args.next();
