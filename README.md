@@ -1,7 +1,10 @@
 # wavz
-<img width="1503" height="745" alt="image" src="https://github.com/user-attachments/assets/187a838e-2f64-4800-ab0d-68063b7a45c7" />
 
 A real-time audio visualization tool written in Rust that performs Fast Fourier Transform (FFT) analysis on audio streams and WAV files.
+
+![Demo](demo.gif)
+
+[Full demo video (MP4)](demo.mp4)
 
 ## Features
 
@@ -25,7 +28,7 @@ A real-time audio visualization tool written in Rust that performs Fast Fourier 
 - **Space** - Play/pause audio
 - **Arrow Left/Right** - Skip backward/forward 0.5 seconds
 - **Arrow Up/Down** - Adjust visual sensitivity
-- **+/-** - Zoom in/out
+- **+/- or Scroll** - Zoom in/out
 - **Q** - Quit
 
 ### Color Schemes
