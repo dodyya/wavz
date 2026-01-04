@@ -1,4 +1,5 @@
-#wavz
+# wavz
+<img width="1503" height="745" alt="image" src="https://github.com/user-attachments/assets/187a838e-2f64-4800-ab0d-68063b7a45c7" />
 
 A real-time audio visualization tool written in Rust that performs Fast Fourier Transform (FFT) analysis on audio streams and WAV files.
 
