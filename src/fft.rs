@@ -1,7 +1,7 @@
 use std::ops::{Index, IndexMut};
 use std::sync::LazyLock;
 
-pub const WINDOW_SIZE: usize = 1 << 11; // 4096
+pub const WINDOW_SIZE: usize = 1 << 10; // 4096
 pub const SPECTRUM_SIZE: usize = WINDOW_SIZE / 2;
 pub const STEP_SIZE: usize = 1 << 8; // 256
 

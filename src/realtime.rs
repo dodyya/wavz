@@ -147,8 +147,8 @@ impl FftMaker {
 		let fft_end = ((end_frame - self.lbound) / STEP_SIZE) * SPECTRUM_SIZE;
 
 		let truelen = fft_end - fft_start;
-		// assert!(self.fft_buf.len() >= fft_end);
-		// assert!(out.len() == truelen);
+		assert!(self.fft_buf.len() >= fft_end);
+		assert!(out.len() == truelen);
 
 		if fft_end <= head.len() {
 			out.copy_from_slice(&head[fft_start..fft_end]);

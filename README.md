@@ -1,46 +1,95 @@
-# waveZ
+#wavz
 
-Group Name: Paul and David
+A real-time audio visualization tool written in Rust that performs Fast Fourier Transform (FFT) analysis on audio streams and WAV files.
 
-Group members and NetIDs: pauljm2, davidf14 respectively
+## Features
 
-Project introduction:
-We plan to implement the Fast Fourier Transform algorithm, and apply it to visualizing .wav audio files.
+### Audio Visualization Modes
 
-#### Goals:
+- **Real-time WAV visualization** (`vis`) - Visualize WAV files with synchronized playback and interactive spectrogram
+- **Pre-computed visualization** (`precomp`) - Generate spectrograms from WAV files with pre-calculated FFT
+- **Microphone visualization** (`mic`) - Real-time FFT visualization from microphone input
+- **ASCII microphone** (`asciimic`) - Terminal-based audio visualization
+- **WAV playback** (`play`) - Simple audio player for WAV files
 
-- Understand and implement recursive FFT
-- Understand and implement Cooley-Tukey "iterative" FFT
-- Understand and implement the .wav parser
-- Create a visually pleasing demo; audio visualization along with playback ~~in the best case, and static spectrogram image in the worst case~~
-- We have chosen to work on this project, because it yields itself well to working in parallel. This project will contain significant amounts of both theoretical and applied depth.
+### FFT Implementation
 
-==== COMPLETE BY CHECKPOINT 1; 11/10-11/15 ====
+- Cooley-Tukey iterative FFT algorithm
+- Optimized for power-of-two window sizes (default: 4096 samples)
+- Sliding window analysis with configurable step size (default: 256 samples)
+- Efficient spectrum magnitude calculation
 
-- [x] Parser for .wav files, figuring out what parts of the spec are relevant to our use case.
-- [x] Internal representation of audio signal
-- [x] Fast Fourier Transform implementation, potentially with a complex number struct, tested on synthetic audio (e.g. pure sine wave sums)
+### Interactive Controls (real-time mode)
 
-==== COMPLETE BY CHECKPOINT 2; 12/1-12/5 ====
+- **Space** - Play/pause audio
+- **Arrow Left/Right** - Skip backward/forward 0.5 seconds
+- **Arrow Up/Down** - Adjust visual sensitivity
+- **+/-** - Zoom in/out
+- **Q** - Quit
 
-- [x] Visualization pipeline with `pixels`, visualize the signal as a waveform, pipe to image file
-- [x] Static visualization of synthetic frequency data, ~~adapt visualization to arbitrary vector lengths~~
-- [x] Plumbing file information into the transform,
-- [x] specific time ranges (non-global)
-- [x] Static visualization of real .wav audio
-- [x] Time-synced scrolling
-- [x] Play/pause/scroll along visualization
-- [ ] Playback indicator (scrolling vertical line)
+### Color Schemes
 
-==== COMPLETE BY SUBMISSION; 12/10 ====
+Choose from three different color palettes with the `-c` flag:
 
-- [ ] Variable y-ranges in visualization, log scale?
-- [ ] Sync audio and visualization
-      ~~ - [ ] UI improvements; see wave and frequencies in the same window, use some external crate~~
+- **Viridis** (default, `-c 1`) - Perceptually uniform blue-green-yellow
+- **Inferno** (`-c 2`) - Dark purple to bright yellow
+- **Bone** (`-c 3`) - Grayscale with blue tint
 
-==§§ POTENTIAL EXTENSIONS §§==
+## Usage
 
-- [ ] Inverse FFT
-- [ ] Modulate real audio data
-- [ ] Inverse parser that writes to file
-- [ ] Box-select frequencies in viewer, move/scale/resize, and export resulting .wav
+```bash
+wavz [-c 1|2|3] <command> [file]
+```
+
+### Examples
+
+```bash
+# Visualize a WAV file with real-time playback
+wavz vis audio.wav
+
+# Use inferno color scheme
+wavz -c 2 vis audio.wav
+
+# Pre-compute spectrogram
+wavz precomp audio.wav
+
+# Real-time microphone visualization
+wavz mic
+
+# ASCII terminal visualization
+wavz asciimic
+
+# Play audio without visualization
+wavz play audio.wav
+```
+
+## WAV File Support
+
+- Supports PCM format WAV files
+- Handles 1 or 2 channel audio
+- Supports multiple format chunk sizes (16, 18, 40 bytes)
+- Automatic channel averaging for stereo files
+- Memory-mapped file I/O for efficient large file handling
+
+## Technical Details
+
+- **FFT Window Size**: 4096 samples (2048 frequency bins)
+- **Step Size**: 256 samples (overlapping windows)
+- **Rendering**: GPU-accelerated using `pixels` crate
+- **Audio Output**: Cross-platform support via `cpal`
+- **Window Management**: `winit` for cross-platform windowing
+
+## Building
+
+```bash
+cargo build --release
+```
+
+## Dependencies
+
+- `pixels` - GPU-accelerated pixel buffer rendering
+- `cpal` - Cross-platform audio I/O
+- `winit` - Cross-platform windowing
+- `memmap2` - Memory-mapped file I/O
+- `bytemuck` - Zero-copy type conversions
+- `ringbuf` - Lock-free ring buffer for audio streaming
