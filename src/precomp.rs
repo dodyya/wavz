@@ -1,10 +1,7 @@
-use crate::graphics::{ColorScheme, spectrogram};
-use crate::parser::RiffWavePcm;
 use std::fmt::Debug;
 use std::time::Instant;
 
 use bytemuck::cast_slice;
-
 use pixels::{Pixels, SurfaceTexture};
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
@@ -13,9 +10,9 @@ use winit::keyboard::KeyCode;
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-use crate::fft::BoxSlice2D;
-use crate::fft::STEP_SIZE;
-use crate::fft::sliding_spectra;
+use crate::fft::{BoxSlice2D, STEP_SIZE, sliding_spectra};
+use crate::graphics::{ColorScheme, spectrogram};
+use crate::parser::precomp::RiffWavePcm;
 use crate::rgba::Rgba;
 
 // TODO: lower the scope of some of these constants (move them into functions or structs if not used everywhere)

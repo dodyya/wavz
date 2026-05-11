@@ -1,10 +1,11 @@
+use std::collections::VecDeque;
+use std::sync::mpsc::{Receiver, Sender, channel};
+use std::time::{Duration, Instant};
+
 use bytemuck::checked::cast_slice_mut;
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 use cpal::{BufferSize, SampleRate, StreamConfig};
 use pixels::{Pixels, SurfaceTexture};
-use std::collections::VecDeque;
-use std::sync::mpsc::{Receiver, Sender, channel};
-use std::time::{Duration, Instant};
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
@@ -14,10 +15,13 @@ use winit_input_helper::WinitInputHelper;
 
 use crate::fft::{MutSlice2D, SPECTRUM_SIZE, STEP_SIZE, WINDOW_SIZE, sliding_spectra};
 use crate::graphics::{ColorScheme, draw_vbar, spectrogram_into};
-use crate::parser::{Channels, MmapedRiffPcm, Samples, from_mmap, mmap_file};
+use crate::parser::Channels;
+use crate::parser::mmap::{MmapedRiffPcm, from_mmap, mmap_file};
 
 const WIDTH: usize = 3000;
 const MAX_HEIGHT: u32 = WINDOW_SIZE as u32 / 2;
+
+pub type Samples = &'static [i16];
 
 pub fn realtime_vis(file_path: &str, cs: ColorScheme) {
 	let mmap: MmapedRiffPcm<'static> = from_mmap(mmap_file(file_path));
