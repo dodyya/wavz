@@ -6,12 +6,9 @@ A real-time audio visualization tool written in Rust that performs Fast Fourier 
 
 "Ostavi Trag" by September, approx. 1:38 in. The repeating pattern is the harmonics in the singer's voice.
 
-![Demo](demo.gif)
+![Demo](https://github.com/user-attachments/assets/50b36434-62fc-4ff8-a6a2-b732e138f3f6)
 
 Intro to "All I want for Christmas is You" by Mariah Carey. You can see the transition from the chimes to the singing.
-
-
-[Full demo video (MP4)](demo.mp4)
 
 ## Features
 
