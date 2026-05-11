@@ -2,11 +2,13 @@
 
 A real-time audio visualization tool written in Rust that performs Fast Fourier Transform (FFT) analysis on audio streams and WAV files.
 
-<img width="1502" height="853" alt="image" src="https://github.com/user-attachments/assets/7fdfc158-21f5-4d8e-89e0-80b4221be459" />
+<img width="700" alt="image" src="https://github.com/user-attachments/assets/7fdfc158-21f5-4d8e-89e0-80b4221be459" />
 
 "Ostavi Trag" by September, approx. 1:38 in. The repeating pattern is the harmonics in the singer's voice.
 
-![Demo](https://github.com/user-attachments/assets/50b36434-62fc-4ff8-a6a2-b732e138f3f6)
+Demo video:
+
+<img width="700" height="439" alt="demo" src="https://github.com/user-attachments/assets/982caf16-ea5f-478c-b332-1ce66ab1d6e1" />
 
 Intro to "All I want for Christmas is You" by Mariah Carey. You can see the transition from the chimes to the singing.
 
@@ -103,5 +105,5 @@ cargo build --release
 - `ringbuf` - Lock-free ring buffer for audio streaming
 
 It also works on "hidden image" audio, see `∆Mᵢ⁻¹ = −∂ ∑ Dᵢ[n] [∑ Fⱼᵢ[n−1] + F extᵢ[n⁻¹]]` by Aphex Twin below
-<img width="1641" height="906" alt="image" src="https://github.com/user-attachments/assets/feeca057-2178-4ffe-8407-48095f9adf54" />
+<img width="700" alt="image" src="https://github.com/user-attachments/assets/feeca057-2178-4ffe-8407-48095f9adf54" />
 
